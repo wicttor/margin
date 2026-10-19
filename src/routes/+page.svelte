@@ -540,10 +540,6 @@
         >
           <Icon name="sidebar-show" />
         </button>
-        <button class="btn flat" use:tooltip={"Open a Document"} onclick={chooseFiles}>
-          <Icon name="document-open" />
-          <span>Open</span>
-        </button>
         <button class="btn image flat" use:tooltip={"New Tab"} onclick={newFile}>
           <Icon name="tab-new" />
         </button>
