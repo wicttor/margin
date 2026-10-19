@@ -1,3 +1,5 @@
+mod terminal;
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -220,7 +222,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::default())
+        .manage(terminal::Terminals::default())
         .setup(|app| {
             let cwd = std::env::current_dir().unwrap_or_default();
             let files = files_from_args(std::env::args().skip(1), &cwd);
@@ -236,21 +240,29 @@ pub fn run() {
             save_asset,
             watch_folder,
             print_page,
-            take_pending_opens
+            take_pending_opens,
+            terminal::terminal_spawn,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_kill
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|_app, _event| {
+    app.run(|app, event| {
+        if let tauri::RunEvent::Exit = event {
+            app.state::<terminal::Terminals>().kill_all();
+        }
+
         // macOS delivers double-clicked / "Open with" files as an event instead of arguments.
         #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Opened { urls } = _event {
+        if let tauri::RunEvent::Opened { urls } = event {
             let files = urls
                 .into_iter()
                 .filter_map(|u| u.to_file_path().ok())
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
-            open_files(_app, files);
+            open_files(app, files);
         }
     });
 }

@@ -3,7 +3,7 @@
   import { overlays } from "./overlays.svelte";
   import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
-  import { accelKeys } from "./platform";
+  import { accelKeys, isMac } from "./platform";
   import { tooltip } from "./tooltip";
   import appIcon from "../assets/app-icon.png";
 
@@ -34,6 +34,15 @@
       items: [
         ["Show sidebar", "F9"],
         ["Show markdown source", "Primary+/"],
+      ],
+    },
+    {
+      title: "Terminal",
+      items: [
+        ["New terminal", "Ctrl+Shift+`"],
+        ["Show terminal area", "Ctrl+`"],
+        ["Copy", isMac ? "Primary+C" : "Primary+Shift+C"],
+        ["Paste", isMac ? "Primary+V" : "Primary+Shift+V"],
       ],
     },
     {

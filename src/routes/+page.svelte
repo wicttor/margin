@@ -25,6 +25,8 @@
   import { app, Tab } from "$lib/state.svelte";
   import Editor from "$lib/Editor.svelte";
   import TreeNode from "$lib/TreeNode.svelte";
+  import TerminalView from "$lib/TerminalView.svelte";
+  import { terminals } from "$lib/terminals.svelte";
   import Icon from "$lib/ui/Icon.svelte";
   import Menu, { type MenuSections } from "$lib/ui/Menu.svelte";
   import OverlayHost from "$lib/ui/OverlayHost.svelte";
@@ -187,6 +189,7 @@
         { label: "_New Document", accel: accelLabel("Primary+N"), action: newFile },
         { label: "_Open File…", accel: accelLabel("Primary+O"), action: chooseFiles },
         { label: "Open _Folder…", accel: accelLabel("Primary+Shift+O"), action: chooseFolder },
+        { label: "New _Terminal", accel: "Ctrl+Shift+`", action: () => terminals.create() },
       ],
       [
         {
@@ -288,6 +291,7 @@
       files: app.tabs.map((t) => t.path).filter(Boolean),
       active: app.active?.path ?? null,
       sidebarOpen: app.sidebarOpen,
+      terminalHeight: terminals.panelHeight,
     };
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -301,6 +305,7 @@
     } catch {}
     if (session) {
       app.sidebarOpen = session.sidebarOpen ?? true;
+      terminals.panelHeight = session.terminalHeight ?? terminals.panelHeight;
       if (session.folder && (await pathExists(session.folder))) await setFolder(session.folder);
       for (const path of session.files ?? []) {
         if (await pathExists(path)) await openFile(path);
@@ -336,6 +341,17 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (overlays.alerts.length || menu) return;
+    // Ctrl+` shows or hides the terminal area and Ctrl+Shift+` opens a terminal, as in VS Code.
+    if (e.code === "Backquote" && e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) terminals.create();
+      else terminals.togglePanel();
+      return;
+    }
+    // In a terminal, keys like Ctrl+W, Ctrl+P and Ctrl+R belong to the shell.
+    const inTerminal = (e.target as Element | null)?.closest?.(".terminal-area");
+    if (inTerminal && e.key !== "F9" && e.key !== "F10") return;
     const cmd = isMac ? e.metaKey : e.ctrlKey;
     const key = e.key.toLowerCase();
     let action: (() => unknown) | undefined;
@@ -367,6 +383,23 @@
       e.stopPropagation();
       action();
     }
+  }
+
+  /** Drags the line between the documents and the terminal area. */
+  function startTerminalResize(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement;
+    const content = handle.closest(".content")!.getBoundingClientRect();
+    handle.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const height = content.bottom - ev.clientY;
+      terminals.panelHeight = Math.round(Math.min(content.height - 160, Math.max(120, height)));
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
   }
 
   onMount(() => {
@@ -453,6 +486,45 @@
           </div>
         {/if}
       </nav>
+      <section class="terminal-section" aria-label="Terminals">
+        <header class="section-header">
+          <h2 class="caption-heading dim-label">Terminals</h2>
+          <button
+            class="btn image flat section-button"
+            use:tooltip={"New Terminal"}
+            onclick={() => terminals.create()}
+          >
+            <Icon name="tab-new" />
+          </button>
+        </header>
+        {#each terminals.sessions as session (session.id)}
+          <div
+            class="terminal-row"
+            class:current={terminals.panelOpen && session.id === terminals.activeId}
+            role="button"
+            tabindex="0"
+            title={session.name}
+            onclick={() => terminals.show(session)}
+            onkeydown={(e) => e.key === "Enter" && terminals.show(session)}
+          >
+            <Icon name="utilities-terminal" class="icon" />
+            <span class="label">{session.name}</span>
+            {#if terminals.sessions.some((s) => s !== session && s.name === session.name)}
+              <span class="caption dim-label numeric">{session.number}</span>
+            {/if}
+            <button
+              class="row-close"
+              use:tooltip={"Close Terminal"}
+              onclick={(e) => {
+                e.stopPropagation();
+                terminals.close(session);
+              }}
+            >
+              <Icon name="window-close" />
+            </button>
+          </div>
+        {/each}
+      </section>
     </aside>
   {/if}
 
@@ -550,6 +622,52 @@
         </div>
       {/if}
     </div>
+
+    {#if terminals.sessions.length > 0}
+      <section
+        class="terminal-area"
+        class:hidden={!terminals.panelOpen}
+        style:height="{terminals.panelHeight}px"
+        aria-label="Terminal"
+      >
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="splitter" onpointerdown={startTerminalResize}></div>
+        <header class="panel-header">
+          <Icon name="utilities-terminal" />
+          <span class="panel-title">{terminals.active?.name ?? ""}</span>
+          <button
+            class="btn image flat"
+            use:tooltip={"New Terminal"}
+            onclick={() => terminals.create()}
+          >
+            <Icon name="tab-new" />
+          </button>
+          <button
+            class="btn image flat"
+            use:tooltip={"Close Terminal"}
+            onclick={() => terminals.active && terminals.close(terminals.active)}
+          >
+            <Icon name="window-close" />
+          </button>
+          <button
+            class="btn image flat"
+            use:tooltip={"Hide Terminal Area"}
+            onclick={() => (terminals.panelOpen = false)}
+          >
+            <Icon name="pan-down" />
+          </button>
+        </header>
+        <div class="terminal-stack">
+          {#each terminals.sessions as session (session.id)}
+            <TerminalView
+              {session}
+              visible={terminals.panelOpen && session.id === terminals.activeId}
+              cwd={app.folder}
+            />
+          {/each}
+        </div>
+      </section>
+    {/if}
   </main>
 </div>
 
@@ -583,6 +701,75 @@
     overflow: auto;
     padding: 0 6px 12px 6px;
   }
+  /* Terminals: pinned to the bottom of the sidebar, under the file tree. */
+  .terminal-section {
+    flex: none;
+    max-height: 40%;
+    overflow-y: auto;
+    padding: 0 6px 6px;
+    box-shadow: inset 0 1px var(--sidebar-border-color);
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 0 0 0 10px;
+  }
+  .section-header h2 {
+    margin: 0;
+  }
+  .section-button {
+    min-width: 28px;
+    min-height: 28px;
+  }
+  .terminal-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    margin: 1px 0;
+    padding: 0 4px 0 10px;
+    border-radius: 6px;
+  }
+  .terminal-row:hover {
+    background: var(--hover-color);
+  }
+  .terminal-row.current {
+    background: var(--selected-color);
+  }
+  .terminal-row .label {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .terminal-row :global(.icon) {
+    flex: none;
+  }
+  .row-close {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: none;
+    opacity: 0;
+  }
+  .row-close :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+  .terminal-row:hover .row-close,
+  .row-close:focus-visible {
+    opacity: 1;
+  }
+  .row-close:hover {
+    background: var(--hover-color);
+  }
+
   .traffic-lights {
     flex: none;
     width: 66px;
@@ -694,6 +881,53 @@
     position: relative;
     min-height: 0;
   }
+
+  /* ---------- Terminal area: the bottom part of the split ---------- */
+
+  .terminal-area {
+    position: relative;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 -1px var(--headerbar-shade-color);
+  }
+  .terminal-area.hidden {
+    display: none;
+  }
+  .splitter {
+    position: absolute;
+    top: -4px;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    height: 8px;
+    cursor: row-resize;
+  }
+  .panel-header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 3px 6px 3px 14px;
+  }
+  .panel-header > :global(svg) {
+    flex: none;
+    opacity: var(--dim-opacity);
+  }
+  .panel-title {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 700;
+  }
+  .terminal-stack {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
   .status-page :global(.icon) {
     stroke-width: 0.6;
   }
@@ -706,6 +940,7 @@
     .sidebar,
     .headerbar,
     .tabbar,
+    .terminal-area,
     .status-page {
       display: none !important;
     }

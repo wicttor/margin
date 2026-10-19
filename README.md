@@ -27,6 +27,13 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   images are saved into an `assets/` folder next to the document.
 - **Links**: `Ctrl`/`⌘`+click a link to open it. Links to other `.md` files
   open in a new tab.
+- **Terminals**: open as many as you like from the *Terminals* section at
+  the bottom of the sidebar (or `` Ctrl+Shift+` ``). The first one splits the
+  window, with documents on top and the terminal below. Drag the divider to
+  resize it. Only the current terminal is shown; click one in the sidebar to
+  switch. Hiding the terminal area (`` Ctrl+` ``) keeps the shells running, and
+  typing `exit` closes a terminal. The shell is your default one (PowerShell on
+  Windows when installed) and starts in the open folder.
 - **Reopens your last session**: the folder and the tabs you had open.
 - **Opening files**: double-click a `.md` file once the app is installed
   (file association), or drop files or a folder on the window.
@@ -70,6 +77,9 @@ under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 | Go to tab 1–9          | `Alt+1` … `Alt+9`                         |
 | Markdown source mode   | `Ctrl+/` (in code files: toggle comment)  |
 | Show / hide sidebar    | `F9`                                      |
+| New terminal           | `` Ctrl+Shift+` ``                            |
+| Show / hide terminals  | `` Ctrl+` ``                                  |
+| Copy / paste in a terminal | `Ctrl+Shift+C` / `Ctrl+Shift+V` (`⌘C` / `⌘V` on macOS) |
 | Main menu              | `F10`                                     |
 | Print                  | `Ctrl+P`                                  |
 
@@ -177,12 +187,15 @@ src/                     Svelte frontend
   lib/Editor.svelte      one editor per tab (Milkdown + CodeMirror source mode)
   lib/codemirror.ts      code editor setup, languages, printable highlighting
   lib/TreeNode.svelte    folder tree
+  lib/TerminalView.svelte  one terminal (xterm.js)
+  lib/terminals.svelte.ts  open terminals and the terminal area's state
   lib/ui/                GNOME-style widgets: menus, dialogs, toasts, window buttons, icons
   lib/state.svelte.ts    tabs and tree state
   lib/api.ts             calls into Rust, path helpers
   app.css                libadwaita colors and widget styles, document and print styles
 src-tauri/
   src/lib.rs             file access, folder watching, image saving, printing
+  src/terminal.rs        shells in pseudo-terminals (ConPTY on Windows)
   tauri.conf.json        window, bundling and file associations
   tauri.macos.conf.json  macOS window: native buttons over the header bar
 ```

@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export interface Entry {
   name: string;
@@ -84,3 +84,19 @@ export function localLinkTarget(href: string, docPath: string | null): string | 
   if (isAbsolutePath(path)) return path;
   return docPath ? resolvePath(dirname(docPath), path) : null;
 }
+
+// ---------- Terminals ----------
+
+/** Output from a shell: raw bytes while it runs, then its exit code. */
+export type TerminalMessage = ArrayBuffer | { exit: number };
+
+export const terminalSpawn = (
+  cwd: string | null,
+  cols: number,
+  rows: number,
+  output: Channel<TerminalMessage>,
+) => invoke<number>("terminal_spawn", { cwd, cols, rows, output });
+export const terminalWrite = (id: number, data: string) => invoke<void>("terminal_write", { id, data });
+export const terminalResize = (id: number, cols: number, rows: number) =>
+  invoke<void>("terminal_resize", { id, cols, rows });
+export const terminalKill = (id: number) => invoke<void>("terminal_kill", { id });

@@ -15,6 +15,8 @@
     "text-x-generic": "M3.25 1.75h6l3.5 3.5v9h-9.5zM9.25 1.75v3.5h3.5M5.5 8.25h5M5.5 10.75h5",
     "go-next": "M6 3.5l4.5 4.5L6 12.5",
     "object-select": "M3 8.5l3 3 7-7",
+    "utilities-terminal": "M2.75 2.75h10.5a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1v-8.5a1 1 0 0 1 1-1zM4.5 6l2 2-2 2M8 10.5h3.5",
+    "pan-down": "M3.5 6l4.5 4.5L12.5 6",
     "dot": "",
   } as const;
 
