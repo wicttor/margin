@@ -6,7 +6,6 @@
     "folder-open": "M1.75 12.75V3.25h4l1.5 1.5h5.5v2M1.75 12.75l2-5.5h10.5l-2 5.5z",
     folder: "M1.75 3.25h4l1.5 1.5h7v8h-12.5z",
     "tab-new": "M8 3v10M3 8h10",
-    "document-open": "M1.75 12.75V3.25h4l1.5 1.5h5.5v2M1.75 12.75l2-5.5h10.5l-2 5.5z",
     printer: "M4.25 6V1.75h7.5V6M4.25 11.5h-2.5v-5.5h12.5v5.5h-2.5M4.25 9.25h7.5v5h-7.5z",
     "window-minimize": "M4.5 10.5h7",
     "window-maximize": "M4.5 4.5h7v7h-7z",
