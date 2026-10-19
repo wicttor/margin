@@ -17,7 +17,8 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   search (`Ctrl+F`). They're saved exactly as written.
 - **Binary files** (images, PDFs, archives…) and files over 20 MB open in your
   system's default app.
-- **Folder tree** of a folder's files and sub-folders. Hidden files and
+- **Folder tree** of a folder's files and sub-folders. Double-click a file
+  (or select it and press Enter) to open it. Hidden files and
   `node_modules` are left out. It updates when files change on disk.
 - **Tabs**: a dot marks unsaved changes. You're asked before unsaved work is
   closed. Right-click a tab for more options.

@@ -9,7 +9,20 @@
 
   let open = $derived(app.expanded.has(entry.path));
   let children = $derived(app.listings[entry.path]);
-  let current = $derived(app.active?.path === entry.path);
+  let selected = $derived(app.treeSelected === entry.path);
+
+  // A click selects a row (and expands or collapses a folder); files open on a
+  // double-click or Enter, as in a file manager.
+  function onclick() {
+    app.treeSelected = entry.path;
+    if (entry.is_dir) void toggle();
+  }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key !== "Enter" || entry.is_dir) return;
+    e.preventDefault();
+    onOpen(entry.path);
+  }
 
   async function toggle() {
     if (open) {
@@ -23,11 +36,13 @@
 
 <button
   class="row"
-  class:current
+  class:selected
   style:padding-inline-start="{6 + depth * 18}px"
   title={entry.path}
   aria-expanded={entry.is_dir ? open : undefined}
-  onclick={() => (entry.is_dir ? toggle() : onOpen(entry.path))}
+  {onclick}
+  ondblclick={() => !entry.is_dir && onOpen(entry.path)}
+  {onkeydown}
 >
   {#if entry.is_dir}
     <span class="expander" class:open><Icon name="go-next" /></span>
@@ -68,7 +83,7 @@
   .row:active {
     background: var(--active-color);
   }
-  .row.current {
+  .row.selected {
     background: var(--selected-color);
   }
   .expander {

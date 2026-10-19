@@ -437,6 +437,12 @@
 
   $effect(saveSession);
 
+  // The tree highlights the active document, until another row is clicked.
+  $effect(() => {
+    const path = app.active?.path;
+    if (path) app.treeSelected = path;
+  });
+
   $effect(() => {
     const tab = app.active;
     const title = tab ? `${tab.dirty ? "• " : ""}${tab.name} — Margin` : "Margin";

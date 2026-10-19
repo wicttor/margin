@@ -63,6 +63,8 @@ class AppState {
   expanded = new SvelteSet<string>();
   /** Files recently opened in the current project, newest first. */
   projectRecent = $state<string[]>([]);
+  /** The highlighted row in the file tree: clicked, or the active document. */
+  treeSelected = $state<string | null>(null);
 
   tabs = $state<Tab[]>([]);
   activeId = $state<number | null>(null);
