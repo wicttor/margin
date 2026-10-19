@@ -2,9 +2,10 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { homeDir } from "@tauri-apps/api/path";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { message, open, save } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     basename,
@@ -23,13 +24,23 @@
   import { app, Tab } from "$lib/state.svelte";
   import Editor from "$lib/Editor.svelte";
   import TreeNode from "$lib/TreeNode.svelte";
+  import Icon from "$lib/ui/Icon.svelte";
+  import Menu, { type MenuSections } from "$lib/ui/Menu.svelte";
+  import OverlayHost from "$lib/ui/OverlayHost.svelte";
+  import WindowControls from "$lib/ui/WindowControls.svelte";
+  import { overlays } from "$lib/ui/overlays.svelte";
+  import { accelLabel, isMac } from "$lib/ui/platform";
+  import { tooltip } from "$lib/ui/tooltip";
 
   const SESSION_KEY = "margin.session";
-  const isMac = navigator.userAgent.includes("Mac");
-  const mod = isMac ? "⌘" : "Ctrl+";
   const markdownFilter = [{ name: "Markdown", extensions: MARKDOWN_EXTENSIONS }];
 
   let restored = false;
+  let focused = $state(true);
+  let home = $state<string | null>(null);
+  let menu = $state<{ sections: MenuSections; anchor: DOMRect | { x: number; y: number } } | null>(
+    null,
+  );
 
   // ---------- folder ----------
 
@@ -58,8 +69,8 @@
       const tab = new Tab(path, await readFile(path));
       app.tabs.push(tab);
       app.activeId = tab.id;
-    } catch (e) {
-      await message(`Could not open ${basename(path)}.\n\n${e}`, { kind: "error" });
+    } catch {
+      overlays.toast(`Could not open “${basename(path)}”`);
     }
   }
 
@@ -75,6 +86,7 @@
   }
 
   async function saveTab(tab: Tab, saveAs = false): Promise<boolean> {
+    tab.flush?.();
     let path = tab.path;
     if (!path || saveAs) {
       const picked = await save({
@@ -86,8 +98,8 @@
     }
     try {
       await writeFile(path, tab.content);
-    } catch (e) {
-      await message(`Could not save ${basename(path)}.\n\n${e}`, { kind: "error" });
+    } catch {
+      overlays.toast(`Could not save “${basename(path)}”`);
       return false;
     }
     tab.path = path;
@@ -97,15 +109,22 @@
 
   /** Asks about unsaved changes. Returns false if the user cancelled. */
   async function confirmDiscard(tab: Tab): Promise<boolean> {
+    tab.flush?.();
     if (!tab.dirty) return true;
     app.activeId = tab.id;
-    const answer = await message(`Do you want to save the changes you made to ${tab.name}?`, {
-      title: "Unsaved changes",
-      kind: "warning",
-      buttons: { yes: "Save", no: "Don't Save", cancel: "Cancel" },
+    const answer = await overlays.alert({
+      heading: "Save Changes?",
+      body: `“${tab.name}” contains unsaved changes. Changes which are not saved will be permanently lost.`,
+      responses: [
+        { id: "cancel", label: "Cancel" },
+        { id: "discard", label: "Discard", appearance: "destructive" },
+        { id: "save", label: "Save", appearance: "suggested" },
+      ],
+      defaultResponse: "save",
+      closeResponse: "cancel",
     });
-    if (answer === "Save" || answer === "Yes") return saveTab(tab);
-    return answer === "Don't Save" || answer === "No";
+    if (answer === "save") return saveTab(tab);
+    return answer === "discard";
   }
 
   async function closeTab(tab: Tab) {
@@ -115,6 +134,14 @@
     if (app.activeId === tab.id) {
       app.activeId = (app.tabs[index] ?? app.tabs[index - 1])?.id ?? null;
     }
+  }
+
+  async function closeOtherTabs(keep: Tab) {
+    for (const tab of app.tabs.filter((t) => t !== keep)) {
+      if (!(await confirmDiscard(tab))) return;
+      app.tabs.splice(app.tabs.indexOf(tab), 1);
+    }
+    app.activeId = keep.id;
   }
 
   function cycleTab(step: number) {
@@ -136,6 +163,77 @@
     }
     if (isMarkdown(target)) await openFile(target);
     else await openUrl(href.startsWith("file:") ? href : `file://${target}`).catch(() => {});
+  }
+
+  // ---------- menus ----------
+
+  function mainMenu(): MenuSections {
+    return [
+      [
+        { label: "_New Document", accel: accelLabel("Primary+N"), action: newFile },
+        { label: "_Open File…", accel: accelLabel("Primary+O"), action: chooseFiles },
+        { label: "Open _Folder…", accel: accelLabel("Primary+Shift+O"), action: chooseFolder },
+      ],
+      [
+        {
+          label: "Sa_ve As…",
+          accel: accelLabel("Primary+Shift+S"),
+          disabled: !app.active,
+          action: () => app.active && saveTab(app.active, true),
+        },
+        {
+          label: "_Print…",
+          accel: accelLabel("Primary+P"),
+          disabled: !app.active,
+          action: printPage,
+        },
+      ],
+      [
+        {
+          label: "Markdown _Source",
+          accel: accelLabel("Primary+/"),
+          checked: app.active?.mode === "source",
+          disabled: !app.active,
+          action: toggleSource,
+        },
+        {
+          label: "Side_bar",
+          accel: "F9",
+          checked: app.sidebarOpen,
+          action: () => (app.sidebarOpen = !app.sidebarOpen),
+        },
+      ],
+      [
+        {
+          label: "_Keyboard Shortcuts",
+          accel: accelLabel("Primary+?"),
+          action: () => (overlays.dialog = "shortcuts"),
+        },
+        { label: "_About Margin", action: () => (overlays.dialog = "about") },
+      ],
+    ];
+  }
+
+  function openMainMenu(button?: HTMLElement | null) {
+    button ??= document.querySelector<HTMLElement>(".main-menu-button");
+    if (button) menu = { sections: mainMenu(), anchor: button.getBoundingClientRect() };
+  }
+
+  function openTabMenu(e: MouseEvent, tab: Tab) {
+    e.preventDefault();
+    menu = {
+      anchor: { x: e.clientX, y: e.clientY },
+      sections: [
+        [
+          {
+            label: "Close _Other Tabs",
+            disabled: app.tabs.length < 2,
+            action: () => closeOtherTabs(tab),
+          },
+          { label: "_Close", accel: accelLabel("Primary+W"), action: () => closeTab(tab) },
+        ],
+      ],
+    };
   }
 
   // ---------- external changes ----------
@@ -176,7 +274,6 @@
       files: app.tabs.map((t) => t.path).filter(Boolean),
       active: app.active?.path ?? null,
       sidebarOpen: app.sidebarOpen,
-      sidebarWidth: app.sidebarWidth,
     };
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -190,7 +287,6 @@
     } catch {}
     if (session) {
       app.sidebarOpen = session.sidebarOpen ?? true;
-      app.sidebarWidth = session.sidebarWidth ?? 260;
       if (session.folder && (await pathExists(session.folder))) await setFolder(session.folder);
       for (const path of session.files ?? []) {
         if (await pathExists(path)) await openFile(path);
@@ -209,31 +305,48 @@
 
   $effect(() => {
     const tab = app.active;
-    const title = tab ? `${tab.dirty ? "● " : ""}${tab.name} — Margin` : "Margin";
+    const title = tab ? `${tab.dirty ? "• " : ""}${tab.name} — Margin` : "Margin";
     getCurrentWindow().setTitle(title).catch(() => {});
+  });
+
+  /** The folder shown under the window title, with the home folder shortened to "~". */
+  let subtitle = $derived.by(() => {
+    const path = app.active?.path;
+    if (!path) return app.active ? "Unsaved document" : "";
+    const dir = dirname(path);
+    if (home && dir.startsWith(home)) return "~" + dir.slice(home.replace(/[\\/]$/, "").length);
+    return dir;
   });
 
   // ---------- shortcuts ----------
 
   function onKeydown(e: KeyboardEvent) {
+    if (overlays.alerts.length || menu) return;
     const cmd = isMac ? e.metaKey : e.ctrlKey;
-    if (e.ctrlKey && e.key === "Tab") {
-      e.preventDefault();
-      cycleTab(e.shiftKey ? -1 : 1);
-      return;
-    }
-    if (!cmd || e.altKey) return;
     const key = e.key.toLowerCase();
-    const actions: Record<string, () => unknown> = {
-      s: () => app.active && saveTab(app.active, e.shiftKey),
-      o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
-      n: () => !e.shiftKey && newFile(),
-      w: () => app.active && closeTab(app.active),
-      p: () => printPage(),
-      "/": () => toggleSource(),
-      l: () => e.shiftKey && (app.sidebarOpen = !app.sidebarOpen),
-    };
-    const action = actions[key];
+    let action: (() => unknown) | undefined;
+
+    if (e.key === "F9") action = () => (app.sidebarOpen = !app.sidebarOpen);
+    else if (e.key === "F10") action = () => openMainMenu();
+    else if (e.ctrlKey && e.key === "Tab") action = () => cycleTab(e.shiftKey ? -1 : 1);
+    else if (cmd && e.key === "PageDown") action = () => cycleTab(1);
+    else if (cmd && e.key === "PageUp") action = () => cycleTab(-1);
+    else if (e.altKey && !cmd && /^[1-9]$/.test(e.key)) {
+      const tab = app.tabs[Number(e.key) - 1];
+      if (tab) action = () => (app.activeId = tab.id);
+    } else if (cmd && !e.altKey) {
+      const actions: Record<string, () => unknown> = {
+        s: () => app.active && saveTab(app.active, e.shiftKey),
+        o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
+        n: newFile,
+        t: newFile,
+        w: () => app.active && closeTab(app.active),
+        p: () => app.active && printPage(),
+        "/": toggleSource,
+        "?": () => (overlays.dialog = "shortcuts"),
+      };
+      action = actions[e.shiftKey && key === "/" ? "?" : key];
+    }
     if (action) {
       e.preventDefault();
       e.stopPropagation();
@@ -241,23 +354,8 @@
     }
   }
 
-  // ---------- sidebar resize ----------
-
-  function startResize(e: PointerEvent) {
-    const handle = e.currentTarget as HTMLElement;
-    handle.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      app.sidebarWidth = Math.min(520, Math.max(180, ev.clientX));
-    };
-    const up = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", up);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up);
-  }
-
   onMount(() => {
+    homeDir().then((h) => (home = h), () => {});
     const cleanups: Promise<() => void>[] = [
       listen<string[]>("fs-change", (e) => onFsChange(e.payload)),
       listen("open-files", openPending),
@@ -269,6 +367,7 @@
         }
       }),
       getCurrentWindow().onCloseRequested(async (e) => {
+        for (const tab of app.tabs) tab.flush?.();
         if (!app.tabs.some((t) => t.dirty)) return;
         e.preventDefault();
         for (const tab of [...app.tabs]) {
@@ -282,63 +381,114 @@
   });
 </script>
 
-<svelte:window onkeydowncapture={onKeydown} />
+<svelte:window
+  onkeydowncapture={onKeydown}
+  onfocus={() => (focused = true)}
+  onblur={() => (focused = false)}
+/>
 
-<div class="app">
+{#snippet mainMenuButton()}
+  <button
+    class="btn image flat main-menu-button"
+    class:checked={menu !== null && menu.sections.length > 1}
+    use:tooltip={"Main Menu"}
+    onclick={(e) => openMainMenu(e.currentTarget)}
+  >
+    <Icon name="open-menu" />
+  </button>
+{/snippet}
+
+<div class="window" class:backdrop={!focused} class:mac={isMac}>
   {#if app.sidebarOpen}
-    <aside class="sidebar" style:width="{app.sidebarWidth}px">
-      <header class="sidebar-header">
-        <span class="folder-name" title={app.folder ?? ""}>
-          {app.folder ? basename(app.folder) : "No folder"}
-        </span>
-        <button class="icon-button" title="Open folder ({mod}Shift+O)" onclick={chooseFolder}>
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path
-              d="M1.5 3.5h4.5l1.5 1.5h7v8.5h-13z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.3"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
+    <aside class="sidebar">
+      <header class="headerbar flat" data-tauri-drag-region>
+        <div class="start" data-tauri-drag-region>
+          {#if isMac}<span class="traffic-lights" data-tauri-drag-region></span>{/if}
+          <button class="btn image flat" use:tooltip={"Open Folder"} onclick={chooseFolder}>
+            <Icon name="folder-open" />
+          </button>
+        </div>
+        <div class="center" data-tauri-drag-region>
+          <div class="window-title heading" data-tauri-drag-region>
+            <span data-tauri-drag-region>{app.folder ? basename(app.folder) : "Margin"}</span>
+          </div>
+        </div>
+        <div class="end" data-tauri-drag-region>
+          {@render mainMenuButton()}
+        </div>
       </header>
-      <nav class="tree">
+      <nav class="tree" aria-label="Files">
         {#if app.folder && app.listings[app.folder]}
           {#each app.listings[app.folder] as entry (entry.path)}
             <TreeNode {entry} depth={0} onOpen={openFile} />
           {:else}
-            <p class="hint">No markdown files in this folder.</p>
+            <div class="status-page compact">
+              <h2 class="title-4">No Documents</h2>
+              <p class="description dim-label">This folder has no markdown files.</p>
+            </div>
           {/each}
         {:else}
-          <div class="hint">
-            <p>Open a folder to browse its markdown files.</p>
-            <button class="button" onclick={chooseFolder}>Open folder…</button>
+          <div class="status-page compact">
+            <Icon name="folder" class="icon" size={64} />
+            <h2 class="title-4">No Folder Open</h2>
+            <p class="description dim-label">Open a folder to browse its documents.</p>
+            <div class="actions">
+              <button class="btn" onclick={chooseFolder}>Open Folder…</button>
+            </div>
           </div>
         {/if}
       </nav>
     </aside>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="resizer" onpointerdown={startResize}></div>
   {/if}
 
-  <main class="main">
-    <div class="tabbar">
-      <button
-        class="icon-button"
-        title="Toggle sidebar ({mod}Shift+L)"
-        onclick={() => (app.sidebarOpen = !app.sidebarOpen)}
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-          <path d="M6 2.5v11" stroke="currentColor" stroke-width="1.3" />
-        </svg>
-      </button>
-      <div class="tabs" role="tablist">
+  <main class="content">
+    <header class="headerbar" class:with-tabs={app.tabs.length > 0} data-tauri-drag-region>
+      <div class="start" data-tauri-drag-region>
+        {#if isMac && !app.sidebarOpen}<span class="traffic-lights" data-tauri-drag-region></span>{/if}
+        <button
+          class="btn image flat"
+          class:checked={app.sidebarOpen}
+          use:tooltip={app.sidebarOpen ? "Hide Sidebar" : "Show Sidebar"}
+          onclick={() => (app.sidebarOpen = !app.sidebarOpen)}
+        >
+          <Icon name="sidebar-show" />
+        </button>
+        <button class="btn flat" use:tooltip={"Open a Document"} onclick={chooseFiles}>
+          <Icon name="document-open" />
+          <span>Open</span>
+        </button>
+        <button class="btn image flat" use:tooltip={"New Tab"} onclick={newFile}>
+          <Icon name="tab-new" />
+        </button>
+      </div>
+      <div class="center" data-tauri-drag-region>
+        <div class="window-title" data-tauri-drag-region>
+          <span class="heading" data-tauri-drag-region>
+            {app.active ? `${app.active.dirty ? "• " : ""}${app.active.name}` : "Margin"}
+          </span>
+          {#if subtitle}<span class="subtitle" data-tauri-drag-region>{subtitle}</span>{/if}
+        </div>
+      </div>
+      <div class="end" data-tauri-drag-region>
+        <button
+          class="btn image flat"
+          use:tooltip={"Print"}
+          disabled={!app.active}
+          onclick={() => printPage()}
+        >
+          <Icon name="printer" />
+        </button>
+        {#if !app.sidebarOpen}{@render mainMenuButton()}{/if}
+        {#if !isMac}<WindowControls />{/if}
+      </div>
+    </header>
+
+    {#if app.tabs.length > 0}
+      <div class="tabbar" role="tablist" data-tauri-drag-region>
         {#each app.tabs as tab (tab.id)}
           <div
             class="tab"
-            class:active={tab.id === app.activeId}
+            class:selected={tab.id === app.activeId}
             role="tab"
             tabindex="0"
             aria-selected={tab.id === app.activeId}
@@ -346,254 +496,206 @@
             onclick={() => (app.activeId = tab.id)}
             onkeydown={(e) => e.key === "Enter" && (app.activeId = tab.id)}
             onauxclick={(e) => e.button === 1 && closeTab(tab)}
+            oncontextmenu={(e) => openTabMenu(e, tab)}
           >
-            <span class="tab-name">{tab.name}</span>
+            <span class="indicator" aria-label={tab.dirty ? "Unsaved changes" : undefined}>
+              {#if tab.dirty}<Icon name="dot" />{/if}
+            </span>
+            <span class="tab-title">{tab.name}</span>
             <button
               class="tab-close"
-              class:dirty={tab.dirty}
-              title="Close ({mod}W)"
+              use:tooltip={"Close Tab"}
               onclick={(e) => {
                 e.stopPropagation();
                 closeTab(tab);
               }}
             >
-              <span class="dot"></span>
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.4" />
-              </svg>
+              <Icon name="window-close" />
             </button>
           </div>
         {/each}
       </div>
-      <button
-        class="icon-button"
-        title="Print ({mod}P)"
-        disabled={!app.active}
-        onclick={() => printPage()}
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M4.5 6V1.5h7V6M4.5 11.5h-3v-5.5h13v5.5h-3M4.5 9.5h7v5h-7z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.3"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
-    </div>
+    {/if}
 
     <div class="editors">
       {#each app.tabs as tab (tab.id)}
         <Editor {tab} active={tab.id === app.activeId} onLink={followLink} />
       {/each}
       {#if app.tabs.length === 0}
-        <div class="welcome">
-          <h1>Margin</h1>
-          <dl>
-            <dt>New file</dt><dd>{mod}N</dd>
-            <dt>Open file</dt><dd>{mod}O</dd>
-            <dt>Open folder</dt><dd>{mod}Shift+O</dd>
-            <dt>Save / Save as</dt><dd>{mod}S / {mod}Shift+S</dd>
-            <dt>Source mode</dt><dd>{mod}/</dd>
-            <dt>Print</dt><dd>{mod}P</dd>
-          </dl>
-          <p>You can also drop markdown files or a folder on this window.</p>
+        <div class="status-page">
+          <Icon name="text-x-generic" class="icon" size={128} />
+          <h1 class="title-1">No Open Documents</h1>
+          <p class="description dim-label">
+            Open a markdown file or start a new one. You can also drop files or a folder here.
+          </p>
+          <div class="actions">
+            <button class="btn pill" onclick={newFile}>New Document</button>
+            <button class="btn pill suggested-action" onclick={chooseFiles}>Open File…</button>
+          </div>
         </div>
       {/if}
     </div>
   </main>
 </div>
 
+{#if menu}
+  <Menu sections={menu.sections} anchor={menu.anchor} onclose={() => (menu = null)} />
+{/if}
+<OverlayHost />
+
 <style>
-  .app {
+  .window {
     display: flex;
     height: 100vh;
   }
+
+  /* ---------- Sidebar (AdwNavigationSplitView) ---------- */
+
   .sidebar {
     flex: none;
     display: flex;
     flex-direction: column;
-    background: var(--sidebar);
-    min-width: 0;
+    width: clamp(220px, 25%, 300px);
+    background: var(--sidebar-bg-color);
+    color: var(--sidebar-fg-color);
+    box-shadow: inset -1px 0 var(--sidebar-border-color);
   }
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 40px;
-    padding: 0 8px 0 14px;
-  }
-  .folder-name {
-    flex: 1;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--muted);
+  .backdrop .sidebar {
+    background: var(--sidebar-backdrop-color);
   }
   .tree {
     flex: 1;
     overflow: auto;
-    padding: 2px 6px 12px;
+    padding: 0 6px 12px 6px;
   }
-  .hint {
-    padding: 8px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .hint p {
-    margin: 0 0 10px;
-  }
-  .resizer {
+  .traffic-lights {
     flex: none;
-    width: 4px;
-    margin-left: -2px;
-    margin-right: -2px;
-    cursor: col-resize;
-    position: relative;
-    z-index: 1;
-    border-left: 1px solid var(--border);
-    background-clip: content-box;
+    width: 66px;
   }
-  .resizer:hover {
-    background: var(--accent);
-  }
-  .main {
+
+  /* ---------- Content ---------- */
+
+  .content {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
+    background: var(--view-bg-color);
+    color: var(--view-fg-color);
   }
+  .backdrop .content > .headerbar,
+  .backdrop .tabbar {
+    background: var(--headerbar-backdrop-color);
+  }
+  .backdrop .headerbar > * {
+    opacity: 0.6;
+    transition: opacity 200ms;
+  }
+  .headerbar.with-tabs {
+    box-shadow: none;
+  }
+
+  /* ---------- Tab bar (AdwTabBar) ---------- */
+
   .tabbar {
+    position: relative;
+    z-index: 1;
     flex: none;
     display: flex;
-    align-items: center;
-    gap: 4px;
-    height: 40px;
-    padding: 0 8px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tabs {
-    flex: 1;
-    display: flex;
-    gap: 2px;
-    min-width: 0;
+    gap: 6px;
+    padding: 0 6px 6px;
     overflow-x: auto;
     scrollbar-width: none;
+    background: var(--headerbar-bg-color);
+    color: var(--headerbar-fg-color);
+    box-shadow: 0 1px var(--headerbar-shade-color);
   }
   .tab {
-    flex: 0 1 auto;
+    flex: 1 1 0;
     display: flex;
     align-items: center;
-    gap: 4px;
-    max-width: 220px;
-    min-width: 90px;
-    height: 30px;
-    padding: 0 4px 0 12px;
+    gap: 6px;
+    min-width: 120px;
+    min-height: 34px;
+    padding: 0 5px;
     border-radius: 6px;
-    font-size: 13px;
-    color: var(--muted);
-    cursor: default;
-    user-select: none;
+    transition: background-color 150ms;
   }
   .tab:hover {
-    background: var(--hover);
+    background: var(--hover-color);
   }
-  .tab.active {
-    background: var(--selected);
-    color: var(--text);
+  .tab.selected {
+    background: var(--selected-color);
   }
-  .tab-name {
+  .tab.selected:hover {
+    background: color-mix(in srgb, currentColor 13%, transparent);
+  }
+  .indicator {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    color: var(--accent-color);
+  }
+  .tab-title {
     flex: 1;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    text-align: center;
   }
   .tab-close {
+    flex: none;
     display: grid;
     place-items: center;
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: 9999px;
     background: none;
-    color: inherit;
+    opacity: 0;
+    transition: opacity 150ms;
   }
-  .tab-close > * {
-    grid-area: 1 / 1;
-  }
-  .tab-close svg {
+  .tab-close :global(svg) {
     width: 14px;
     height: 14px;
-    opacity: 0;
   }
-  .tab:hover .tab-close svg,
-  .tab.active .tab-close:not(.dirty) svg {
+  .tab:hover .tab-close,
+  .tab.selected .tab-close,
+  .tab-close:focus-visible {
     opacity: 1;
   }
   .tab-close:hover {
-    background: var(--hover-strong);
+    background: var(--hover-color);
   }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: currentColor;
-    visibility: hidden;
+  .tab-close:active {
+    background: var(--active-color);
   }
-  .tab-close.dirty .dot {
-    visibility: visible;
-  }
-  .tab:hover .tab-close.dirty .dot {
-    visibility: hidden;
-  }
+
   .editors {
     flex: 1;
     position: relative;
     min-height: 0;
   }
-  .welcome {
-    max-width: 360px;
-    margin: 12vh auto 0;
-    padding: 0 24px;
-    color: var(--muted);
-    font-size: 13px;
+  .status-page :global(.icon) {
+    stroke-width: 0.6;
   }
-  .welcome h1 {
-    margin: 0 0 20px;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .welcome dl {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px 16px;
-    margin: 0 0 20px;
-  }
-  .welcome dt,
-  .welcome dd {
+  .status-page h1,
+  .status-page h2 {
     margin: 0;
-  }
-  .welcome dd {
-    font-family: var(--font-mono);
-    color: var(--text);
   }
 
   @media print {
     .sidebar,
-    .resizer,
+    .headerbar,
     .tabbar,
-    .welcome {
+    .status-page {
       display: none !important;
     }
-    .app,
-    .main,
+    .window,
+    .content,
     .editors {
       display: block;
       height: auto;

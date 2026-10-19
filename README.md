@@ -15,7 +15,7 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
 - **Folder tree** of a folder's sub-folders and markdown files. It updates when
   files change on disk.
 - **Tabs**: a dot marks unsaved changes. You're asked before unsaved work is
-  closed.
+  closed. Right-click a tab for more options.
 - **Print** button (`Ctrl+P`). To make a PDF, pick "Save as PDF" in your
   system's print dialog.
 - **Images**: relative paths like `assets/pic.png` display correctly. Pasted
@@ -27,20 +27,46 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   (file association), or drop files or a folder on the window.
 - **Light and dark themes**, following the system setting.
 
+## Design
+
+The interface follows the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
+and uses libadwaita's colors, type scale and widget styles, implemented in CSS
+so it looks the same on Windows, macOS and Linux:
+
+- **Header bars** instead of a system title bar. They hold the window
+  buttons, a centered window title and the main menu. On macOS the native
+  traffic-light buttons sit in the header bar.
+- **Split view** with a sidebar for the folder tree, a tab bar like
+  `AdwTabBar`, and empty-state pages like `AdwStatusPage`.
+- **In-app dialogs and toasts** like `AdwAlertDialog` and `AdwToast`,
+  instead of system message boxes. File pickers stay native.
+- A **main menu** with access keys, plus *Keyboard Shortcuts* and *About*
+  dialogs.
+- **Light and dark** styles, following the system, and a high-contrast
+  variant.
+
+Colors and metrics live as CSS variables in `src/app.css`, named like
+libadwaita's own (`--accent-bg-color`, `--headerbar-bg-color`, …). The UI font
+is Inter, which GNOME's Adwaita Sans is based on. It's bundled, so it's the
+same on every OS.
+
 ## Keyboard shortcuts
 
-On macOS, use `⌘` instead of `Ctrl`.
+On macOS, use `⌘` instead of `Ctrl`. All shortcuts are also listed in the app
+under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 
-| Action              | Shortcut                       |
-| ------------------- | ------------------------------ |
-| New file            | `Ctrl+N`                       |
-| Open file / folder  | `Ctrl+O` / `Ctrl+Shift+O`      |
-| Save / Save as      | `Ctrl+S` / `Ctrl+Shift+S`      |
-| Close tab           | `Ctrl+W` (or middle-click)     |
-| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab`  |
-| Toggle source mode  | `Ctrl+/`                       |
-| Toggle sidebar      | `Ctrl+Shift+L`                 |
-| Print               | `Ctrl+P`                       |
+| Action                 | Shortcut                                  |
+| ---------------------- | ----------------------------------------- |
+| New document / new tab | `Ctrl+N` / `Ctrl+T`                       |
+| Open file / folder     | `Ctrl+O` / `Ctrl+Shift+O`                 |
+| Save / Save as         | `Ctrl+S` / `Ctrl+Shift+S`                 |
+| Close tab              | `Ctrl+W` (or middle-click)                |
+| Next / previous tab    | `Ctrl+Page Down` / `Ctrl+Page Up`, `Ctrl+Tab` |
+| Go to tab 1–9          | `Alt+1` … `Alt+9`                         |
+| Markdown source mode   | `Ctrl+/`                                  |
+| Show / hide sidebar    | `F9`                                      |
+| Main menu              | `F10`                                     |
+| Print                  | `Ctrl+P`                                  |
 
 ## Development
 
@@ -145,12 +171,14 @@ src/                     Svelte frontend
   routes/+page.svelte    window layout, tabs, shortcuts, session
   lib/Editor.svelte      one editor per tab (Milkdown + CodeMirror source mode)
   lib/TreeNode.svelte    folder tree
+  lib/ui/                GNOME-style widgets: menus, dialogs, toasts, window buttons, icons
   lib/state.svelte.ts    tabs and tree state
   lib/api.ts             calls into Rust, path helpers
-  app.css                theme colors, editor styling, print styles
+  app.css                libadwaita colors and widget styles, document and print styles
 src-tauri/
   src/lib.rs             file access, folder watching, image saving, printing
   tauri.conf.json        window, bundling and file associations
+  tauri.macos.conf.json  macOS window: native buttons over the header bar
 ```
 
 ## Known limitations

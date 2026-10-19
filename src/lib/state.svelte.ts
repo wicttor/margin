@@ -20,6 +20,11 @@ export class Tab {
   /** Bumped when the content is replaced from outside, so the editor rebuilds. */
   version = $state(0);
   mode = $state<Mode>("wysiwyg");
+  /**
+   * Set by the tab's editor. The WYSIWYG editor reports changes after a short delay, so
+   * call this before reading `content` for saving or closing, to include the latest keystrokes.
+   */
+  flush: (() => void) | null = null;
 
   name = $derived(this.path ? basename(this.path) : "Untitled");
   dirty = $derived(this.content !== this.diskText && this.content !== this.baseline);
@@ -55,7 +60,6 @@ class AppState {
   active = $derived(this.tabs.find((t) => t.id === this.activeId) ?? null);
 
   sidebarOpen = $state(true);
-  sidebarWidth = $state(260);
 
   async loadListing(dir: string) {
     try {

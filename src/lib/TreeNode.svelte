@@ -2,6 +2,7 @@
   import type { Entry } from "./api";
   import { app } from "./state.svelte";
   import Self from "./TreeNode.svelte";
+  import Icon from "./ui/Icon.svelte";
 
   let { entry, depth, onOpen }: { entry: Entry; depth: number; onOpen: (path: string) => void } =
     $props();
@@ -23,36 +24,19 @@
 <button
   class="row"
   class:current
-  style:padding-left="{8 + depth * 14}px"
+  style:padding-inline-start="{6 + depth * 18}px"
   title={entry.path}
+  aria-expanded={entry.is_dir ? open : undefined}
   onclick={() => (entry.is_dir ? toggle() : onOpen(entry.path))}
 >
   {#if entry.is_dir}
-    <svg class="chevron" class:open viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" />
-    </svg>
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M1.5 3.5h4.5l1.5 1.5h7v8.5h-13z"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.2"
-        stroke-linejoin="round"
-      />
-    </svg>
+    <span class="expander" class:open><Icon name="go-next" /></span>
+    <Icon name={open ? "folder-open" : "folder"} class="icon" />
   {:else}
-    <span class="chevron"></span>
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.2"
-        stroke-linejoin="round"
-      />
-    </svg>
+    <span class="expander"></span>
+    <Icon name="text-x-generic" class="icon" />
   {/if}
-  <span class="label">{entry.is_dir ? entry.name : entry.name.replace(/\.(md|markdown)$/i, "")}</span>
+  <span class="label">{entry.name}</span>
 </button>
 
 {#if entry.is_dir && open && children}
@@ -60,7 +44,7 @@
     <Self entry={child} depth={depth + 1} {onOpen} />
   {/each}
   {#if children.length === 0}
-    <div class="empty" style:padding-left="{30 + (depth + 1) * 14}px">No markdown files</div>
+    <div class="empty dim-label" style:padding-inline-start="{6 + (depth + 1) * 18 + 22}px">No markdown files</div>
   {/if}
 {/if}
 
@@ -68,41 +52,43 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     width: 100%;
-    height: 26px;
-    padding-right: 8px;
+    min-height: 34px;
+    margin: 1px 0;
+    padding-inline-end: 10px;
     border: 0;
-    border-radius: 5px;
+    border-radius: 6px;
     background: none;
-    color: var(--text);
-    font: inherit;
-    font-size: 13px;
-    text-align: left;
-    cursor: default;
+    text-align: start;
   }
   .row:hover {
-    background: var(--hover);
+    background: var(--hover-color);
+  }
+  .row:active {
+    background: var(--active-color);
   }
   .row.current {
-    background: var(--selected);
-    font-weight: 500;
+    background: var(--selected-color);
   }
-  .chevron {
+  .expander {
     flex: none;
-    width: 14px;
-    height: 14px;
-    color: var(--muted);
-    transition: transform 0.12s;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    opacity: var(--dim-opacity);
+    transition: transform 150ms ease-out;
   }
-  .chevron.open {
+  .expander :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  .expander.open {
     transform: rotate(90deg);
   }
-  .icon {
+  .row :global(.icon) {
     flex: none;
-    width: 15px;
-    height: 15px;
-    color: var(--muted);
   }
   .label {
     overflow: hidden;
@@ -110,9 +96,8 @@
     text-overflow: ellipsis;
   }
   .empty {
-    height: 24px;
-    line-height: 24px;
-    font-size: 12px;
-    color: var(--muted);
+    min-height: 30px;
+    line-height: 30px;
+    font-size: 9pt;
   }
 </style>

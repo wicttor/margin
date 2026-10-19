@@ -9,9 +9,9 @@
   import { EditorState } from "@codemirror/state";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
-  import { message } from "@tauri-apps/plugin-dialog";
   import { imageUrl, saveAsset } from "./api";
   import type { Tab } from "./state.svelte";
+  import { overlays } from "./ui/overlays.svelte";
 
   let {
     tab,
@@ -32,16 +32,13 @@
 
   async function uploadImage(file: File): Promise<string> {
     if (!tab.path) {
-      await message("Save the document first, so the image can be stored next to it.", {
-        title: "Image not added",
-        kind: "info",
-      });
+      overlays.toast("Save the document first to add images");
       return "";
     }
     try {
       return await saveAsset(tab.path, file);
     } catch (e) {
-      await message(String(e), { title: "Could not save image", kind: "error" });
+      overlays.toast(`Could not save image: ${e}`);
       return "";
     }
   }
@@ -92,6 +89,15 @@
     crepe = editor;
     builtVersion = version;
     if (tab.baseline === null) tab.baseline = editor.getMarkdown();
+    tab.flush = () => tab.mode === "wysiwyg" && flushWysiwyg();
+  }
+
+  /** Copies the WYSIWYG editor's latest markdown into the tab, without waiting for its update event. */
+  function flushWysiwyg() {
+    if (!crepe) return;
+    const md = crepe.getMarkdown();
+    // An untouched document keeps its original text, so saving it doesn't reformat it.
+    if (md !== tab.baseline || tab.content !== tab.diskText) tab.content = md;
   }
 
   function showSource() {
@@ -123,7 +129,10 @@
 
   function sync() {
     if (tab.mode === "source") {
-      contentBeforeSource ??= tab.content;
+      if (contentBeforeSource === null) {
+        flushWysiwyg();
+        contentBeforeSource = tab.content;
+      }
       showSource();
       return;
     }
@@ -143,6 +152,7 @@
 
   onDestroy(() => {
     buildSeq++;
+    tab.flush = null;
     void crepe?.destroy();
     source?.destroy();
   });
@@ -193,7 +203,7 @@
   .page {
     max-width: 900px;
     margin: 0 auto;
-    padding: 40px 72px 40vh;
+    padding: 36px 72px 40vh;
   }
   .hidden {
     display: none;
@@ -202,16 +212,16 @@
     font-family: var(--font-mono);
     font-size: 14px;
     background: transparent;
-    color: var(--text);
+    color: var(--view-fg-color);
   }
   .source :global(.cm-editor.cm-focused) {
     outline: none;
   }
   .source :global(.cm-content) {
-    caret-color: var(--text);
+    caret-color: var(--view-fg-color);
   }
   .source :global(.cm-selectionBackground),
   .source :global(.cm-focused .cm-selectionBackground) {
-    background: var(--selected) !important;
+    background: color-mix(in srgb, var(--accent-bg-color) 25%, transparent) !important;
   }
 </style>

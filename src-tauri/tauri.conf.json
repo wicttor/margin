@@ -15,9 +15,11 @@
         "title": "Margin",
         "width": 1200,
         "height": 800,
-        "minWidth": 640,
+        "minWidth": 560,
         "minHeight": 400,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -25,7 +27,9 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["**"],
+          "allow": [
+            "**"
+          ],
           "requireLiteralLeadingDot": false
         }
       }
@@ -45,7 +49,13 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown", "mdown", "mkd", "mkdn"],
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd",
+          "mkdn"
+        ],
         "name": "Markdown document",
         "description": "Markdown document",
         "role": "Editor",
