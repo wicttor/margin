@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="14"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.28"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- The page -->
+  <rect x="162" y="88" width="700" height="808" rx="54" fill="#fbf9f6" stroke="#d6dbe4" stroke-width="6" filter="url(#shadow)"/>
+  <!-- Margin line -->
+  <rect x="283" y="91" width="27" height="802" fill="#e09aa0"/>
+  <!-- Heading and text lines -->
+  <rect x="391" y="236" width="363" height="67" rx="33.5" fill="#2b3448"/>
+  <g fill="#b9c0cd">
+    <rect x="391" y="398" width="363" height="40" rx="20"/>
+    <rect x="391" y="492" width="296" height="40" rx="20"/>
+    <rect x="391" y="586" width="363" height="40" rx="20"/>
+    <rect x="391" y="681" width="162" height="40" rx="20"/>
+  </g>
+  <!-- Cursor -->
+  <rect x="579" y="647" width="35" height="108" rx="13" fill="#4a7fd9"/>
+</svg>
