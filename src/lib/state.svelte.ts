@@ -1,5 +1,5 @@
 import { SvelteSet } from "svelte/reactivity";
-import { basename, listDir, type Entry } from "./api";
+import { basename, listDir, type Entry, type SearchHit } from "./api";
 import { prefs } from "./settings.svelte";
 
 export type Mode = "wysiwyg" | "source";
@@ -64,6 +64,14 @@ class AppState {
   expanded = new SvelteSet<string>();
   /** Files recently opened in the current project, newest first. */
   projectRecent = $state<string[]>([]);
+  /** The file search box at the top of the tree. A non-empty query replaces the tree with its results. */
+  searchQuery = $state("");
+  searchResults = $state<SearchHit[]>([]);
+  /** The highlighted result, opened by Enter. */
+  searchActive = $state(0);
+  /** Bumped when files change on disk, so an open search re-runs. */
+  changeTick = $state(0);
+
   /** The highlighted row in the file tree: clicked, or the active document. */
   treeSelected = $state<string | null>(null);
 

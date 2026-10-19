@@ -18,6 +18,17 @@ export const listDir = (path: string, options: ListOptions) =>
 /** A text file's contents, or "external" for binary or very large files. */
 export type FileContent = { kind: "text"; text: string } | { kind: "external" };
 
+export interface SearchHit {
+  name: string;
+  path: string;
+  /** The file's folder relative to the searched folder; "" for the folder itself. */
+  dir: string;
+}
+
+/** Finds files in a project by name; every word must match, in any order. Best matches first. */
+export const searchFiles = (root: string, query: string, options: ListOptions) =>
+  invoke<SearchHit[]>("search_files", { root, query, ...options });
+
 /** Reads a text file; files over `maxSize` bytes come back as "external". */
 export const readFile = (path: string, maxSize?: number) =>
   invoke<FileContent>("read_file", { path, maxSize });

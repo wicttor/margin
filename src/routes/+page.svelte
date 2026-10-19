@@ -1,6 +1,6 @@
 <script lang="ts">
   import "../app.css";
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { homeDir } from "@tauri-apps/api/path";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -29,6 +29,8 @@
   import Editor from "$lib/Editor.svelte";
   import TreeNode from "$lib/TreeNode.svelte";
   import TerminalView from "$lib/TerminalView.svelte";
+  import FileSearch from "$lib/FileSearch.svelte";
+  import SearchResults from "$lib/SearchResults.svelte";
   import RecentDialog from "$lib/RecentDialog.svelte";
   import PreferencesDialog from "$lib/PreferencesDialog.svelte";
   import { existingPaths, recent } from "$lib/recent.svelte";
@@ -49,6 +51,7 @@
   let restored = false;
   let focused = $state(true);
   let showRecent = $state(false);
+  let fileSearch = $state<FileSearch>();
   let showPreferences = $state(false);
   let home = $state<string | null>(null);
   let menu = $state<{ sections: MenuSections; anchor: DOMRect | { x: number; y: number } } | null>(
@@ -253,6 +256,17 @@
     app.activeId = app.tabs[(index + step + app.tabs.length) % app.tabs.length].id;
   }
 
+  /** Moves the cursor to the file search box above the tree, showing the sidebar if it's hidden. */
+  async function focusSearch() {
+    if (!app.folder) {
+      overlays.toast("Open a folder to search its files");
+      return;
+    }
+    app.sidebarOpen = true;
+    await tick();
+    fileSearch?.focus();
+  }
+
   function toggleSource() {
     const tab = app.active;
     if (tab?.kind === "markdown") tab.mode = tab.mode === "source" ? "wysiwyg" : "source";
@@ -283,6 +297,12 @@
         { label: "Open _Folder…", accel: accelLabel("Primary+Shift+O"), action: chooseFolder },
         { label: "Open _Recent…", accel: accelLabel("Primary+R"), action: () => (showRecent = true) },
         { label: "New _Terminal", accel: "Ctrl+Shift+`", action: () => terminals.create() },
+        {
+          label: "Find Fi_le",
+          accel: accelLabel("Primary+Shift+F"),
+          disabled: !app.folder,
+          action: focusSearch,
+        },
       ],
       [
         {
@@ -365,6 +385,7 @@
   async function applyFsChanges() {
     const paths = [...changed];
     changed = new Set();
+    app.changeTick++;
     const dirs = new Set(paths.map(dirname));
     for (const dir of dirs) if (app.listings[dir]) await app.loadListing(dir);
     for (const p of paths) if (app.listings[p]) await app.loadListing(p);
@@ -536,6 +557,7 @@
         s: () => app.active && saveTab(app.active, e.shiftKey),
         o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
         n: newFile,
+        f: e.shiftKey ? focusSearch : undefined,
         r: () => (showRecent = true),
         ",": () => (showPreferences = true),
         t: newFile,
@@ -637,8 +659,13 @@
           {@render mainMenuButton()}
         </div>
       </header>
+      {#if app.folder}
+        <FileSearch bind:this={fileSearch} onOpen={openFile} />
+      {/if}
       <nav class="tree" aria-label="Files">
-        {#if app.folder && app.listings[app.folder]}
+        {#if app.folder && app.searchQuery.trim()}
+          <SearchResults onOpen={openFile} />
+        {:else if app.folder && app.listings[app.folder]}
           {#each app.listings[app.folder] as entry (entry.path)}
             <TreeNode {entry} depth={0} onOpen={openFile} />
           {:else}

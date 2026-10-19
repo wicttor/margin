@@ -20,6 +20,12 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
 - **Folder tree** of a folder's files and sub-folders. Double-click a file
   (or select it and press Enter) to open it. Hidden files and
   `node_modules` are left out. It updates when files change on disk.
+- **File search** above the tree (`Ctrl+Shift+F`): finds files by name anywhere
+  in the project, including folders you haven't expanded. Words can be in any
+  order (`read md` finds `README.md`), and they can match folder names too
+  (`docs plan`). Results replace the tree while you type, with the best
+  matches first. Use `↑`/`↓` and `Enter` to open one, and `Esc` to clear.
+  Hidden files and the folders hidden in Preferences are skipped.
 - **Tabs**: a dot marks unsaved changes. You're asked before unsaved work is
   closed. Right-click a tab for more options.
 - **Print** button (`Ctrl+P`). To make a PDF, pick "Save as PDF" in your
@@ -87,6 +93,7 @@ under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 | New document / new tab | `Ctrl+N` / `Ctrl+T`                       |
 | Open file / folder     | `Ctrl+O` / `Ctrl+Shift+O`                 |
 | Open recent            | `Ctrl+R`                                  |
+| Find a file in the project | `Ctrl+Shift+F`                        |
 | Save / Save as         | `Ctrl+S` / `Ctrl+Shift+S`                 |
 | Close tab              | `Ctrl+W` (or middle-click)                |
 | Next / previous tab    | `Ctrl+Page Down` / `Ctrl+Page Up`, `Ctrl+Tab` |
@@ -204,6 +211,7 @@ src/                     Svelte frontend
   lib/Editor.svelte      one editor per tab (Milkdown + CodeMirror source mode)
   lib/codemirror.ts      code editor setup, languages, printable highlighting
   lib/TreeNode.svelte    folder tree
+  lib/FileSearch.svelte, lib/SearchResults.svelte  file search above the tree
   lib/recent.svelte.ts   recently opened folders and files
   lib/settings.svelte.ts preferences: defaults, saving, applying the appearance
   lib/PreferencesDialog.svelte  the Preferences dialog
@@ -216,7 +224,7 @@ src/                     Svelte frontend
   lib/api.ts             calls into Rust, path helpers
   app.css                libadwaita colors and widget styles, document and print styles
 src-tauri/
-  src/lib.rs             file access, folder watching, image saving, printing
+  src/lib.rs             file access, file search, folder watching, image saving, printing
   src/terminal.rs        shells in pseudo-terminals (ConPTY on Windows)
   tauri.conf.json        window, bundling and file associations
   tauri.macos.conf.json  macOS window: native buttons over the header bar

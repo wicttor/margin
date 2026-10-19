@@ -15,6 +15,7 @@
         ["Open file", "Primary+O"],
         ["Open folder", "Primary+Shift+O"],
         ["Open recent", "Primary+R"],
+        ["Find file in the project", "Primary+Shift+F"],
         ["Save", "Primary+S"],
         ["Save as", "Primary+Shift+S"],
         ["Print", "Primary+P"],

@@ -64,6 +64,99 @@ fn list_dir(path: String, show_hidden: bool, hidden_folders: Vec<String>) -> Res
     Ok(entries)
 }
 
+#[derive(Serialize, Debug)]
+struct SearchHit {
+    name: String,
+    path: String,
+    /// The folder containing the file, relative to the searched folder ("" for the folder itself).
+    dir: String,
+}
+
+/// Most results returned, and most matches or folder entries examined, so a
+/// one-letter search in a huge folder can't hang the app.
+const MAX_HITS: usize = 100;
+const MAX_MATCHES: usize = 2_000;
+const MAX_VISITED: usize = 200_000;
+
+/// Finds files under `root` whose path contains every word of `query` (any
+/// order, ignoring case), best matches first: names that start with a word, then
+/// names that contain it, then files that only match through their folders.
+/// Hidden files are skipped unless `show_hidden`; `.git` and the folders named in
+/// `hidden_folders` are never searched. Symlinked folders aren't followed.
+fn search_walk(root: &Path, query: &str, show_hidden: bool, hidden_folders: &[String]) -> Vec<SearchHit> {
+    let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if terms.is_empty() {
+        return Vec::new();
+    }
+    let mut matches: Vec<(usize, SearchHit)> = Vec::new();
+    // Breadth-first, so files near the top of the project are found before deep ones.
+    let mut queue = std::collections::VecDeque::from([root.to_path_buf()]);
+    let mut visited = 0usize;
+    'walk: while let Some(dir) = queue.pop_front() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            visited += 1;
+            if visited > MAX_VISITED || matches.len() >= MAX_MATCHES {
+                break 'walk;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') && !show_hidden {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                if name != ".git" && !hidden_folders.contains(&name) {
+                    queue.push_back(path);
+                }
+                continue;
+            }
+            if kind.is_symlink() && !std::fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false) {
+                continue;
+            }
+            let Ok(relative) = path.strip_prefix(root) else { continue };
+            let relative_text = relative.to_string_lossy().replace('\\', "/");
+            let haystack = relative_text.to_lowercase();
+            if !terms.iter().all(|t| haystack.contains(t.as_str())) {
+                continue;
+            }
+            let lower_name = name.to_lowercase();
+            let score: usize = terms
+                .iter()
+                .map(|t| if lower_name.starts_with(t.as_str()) { 0 } else if lower_name.contains(t.as_str()) { 1 } else { 2 })
+                .sum();
+            let dir = relative
+                .parent()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            matches.push((score, SearchHit { name, path: path.to_string_lossy().into_owned(), dir }));
+        }
+    }
+    matches.sort_by(|(sa, a), (sb, b)| {
+        sa.cmp(sb)
+            .then_with(|| a.name.len().cmp(&b.name.len()))
+            .then_with(|| a.dir.len().cmp(&b.dir.len()))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    matches.truncate(MAX_HITS);
+    matches.into_iter().map(|(_, hit)| hit).collect()
+}
+
+/// Searches a project folder for files by name; see `search_walk`.
+#[tauri::command]
+async fn search_files(
+    root: String,
+    query: String,
+    show_hidden: bool,
+    hidden_folders: Vec<String>,
+) -> Result<Vec<SearchHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        search_walk(Path::new(&root), &query, show_hidden, &hidden_folders)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Reads a file as UTF-8 text. Files with NUL bytes, invalid UTF-8 or over
 /// `max_size` bytes (default `MAX_TEXT_SIZE`) are reported as external, so they
 /// are never edited and saved back corrupted.
@@ -317,6 +410,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_dir,
+            search_files,
             read_file,
             write_file,
             open_in_default_app,
@@ -355,4 +449,94 @@ pub fn run() {
             open_files(app, files);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch folder with the given files (relative paths), removed on drop.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str, files: &[&str]) -> Self {
+            let root = std::env::temp_dir().join(format!("margin-test-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            for file in files {
+                let path = root.join(file);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, "x").unwrap();
+            }
+            Scratch(root)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn names(hits: &[SearchHit]) -> Vec<&str> {
+        hits.iter().map(|h| h.path.rsplit(['/', '\\']).next().unwrap()).collect()
+    }
+
+    const FILES: &[&str] = &[
+        "README.md",
+        "docs/readme-draft.md",
+        "docs/notes/Plan.md",
+        "src/main.rs",
+        "src/deep/er/readme.txt",
+        ".hidden/secret.md",
+        ".env",
+        "node_modules/pkg/readme.md",
+        ".git/config",
+    ];
+
+    #[test]
+    fn matches_any_case_and_ranks_names_first() {
+        let scratch = Scratch::new("rank", FILES);
+        let hits = search_walk(&scratch.0, "README", false, &["node_modules".into()]);
+        // The name that starts with the word comes first, then the one that only contains it.
+        assert_eq!(names(&hits), ["README.md", "readme.txt", "readme-draft.md"]);
+    }
+
+    #[test]
+    fn all_words_must_match_in_any_order() {
+        let scratch = Scratch::new("words", FILES);
+        let hits = search_walk(&scratch.0, "md docs", false, &[]);
+        assert_eq!(names(&hits), ["Plan.md", "readme-draft.md"]);
+        // A word can match a folder name rather than the file's name.
+        let hits = search_walk(&scratch.0, "notes plan", false, &[]);
+        assert_eq!(names(&hits), ["Plan.md"]);
+    }
+
+    #[test]
+    fn skips_hidden_files_and_hidden_folders() {
+        let scratch = Scratch::new("hidden", FILES);
+        let hits = search_walk(&scratch.0, "md", false, &["node_modules".into()]);
+        assert!(names(&hits).iter().all(|n| *n != "secret.md"));
+        assert!(hits.iter().all(|h| !h.path.contains("node_modules")));
+        let shown = search_walk(&scratch.0, "secret", true, &[]);
+        assert_eq!(names(&shown), ["secret.md"]);
+        // .git is never searched, even when hidden files are shown.
+        assert!(search_walk(&scratch.0, "config", true, &[]).is_empty());
+    }
+
+    #[test]
+    fn reports_the_folder_relative_to_the_root() {
+        let scratch = Scratch::new("dirs", FILES);
+        let hits = search_walk(&scratch.0, "main.rs", false, &[]);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].dir, "src");
+        let root_hit = search_walk(&scratch.0, "README.md", false, &[]);
+        assert_eq!(root_hit[0].dir, "");
+    }
+
+    #[test]
+    fn empty_queries_and_missing_folders_return_nothing() {
+        let scratch = Scratch::new("empty", FILES);
+        assert!(search_walk(&scratch.0, "   ", false, &[]).is_empty());
+        assert!(search_walk(&scratch.0.join("missing"), "md", false, &[]).is_empty());
+    }
 }
