@@ -29,6 +29,8 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -37,6 +39,10 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+
+      - name: cargo fmt
+        working-directory: src-tauri
+        run: cargo fmt --check
 
       - name: cargo check
         working-directory: src-tauri

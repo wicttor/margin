@@ -33,7 +33,7 @@ The project layout is described in the [README](README.md#project-layout).
    ```sh
    npm run check
    npm run build
-   cd src-tauri && cargo check
+   cd src-tauri && cargo fmt --check && cargo check
    ```
 5. Update the README if the change affects features, shortcuts or building.
 6. Add yourself to [CONTRIBUTORS.md](CONTRIBUTORS.md) if you'd like to be

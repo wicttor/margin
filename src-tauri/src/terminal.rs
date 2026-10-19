@@ -3,10 +3,10 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, State};
 
@@ -68,7 +68,12 @@ pub fn terminal_spawn(
     output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let pair = native_pty_system()
-        .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
         .map_err(|e| e.to_string())?;
 
     let mut cmd = match shell.filter(|s| !s.trim().is_empty()) {
@@ -81,7 +86,12 @@ pub fn terminal_spawn(
     };
     let dir = cwd
         .filter(|d| std::path::Path::new(d).is_dir())
-        .or_else(|| app.path().home_dir().ok().map(|p| p.to_string_lossy().into_owned()));
+        .or_else(|| {
+            app.path()
+                .home_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned())
+        });
     if let Some(dir) = dir {
         cmd.cwd(dir);
     }
@@ -97,17 +107,24 @@ pub fn terminal_spawn(
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
     let killer = child.clone_killer();
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(id, Session { master: pair.master, writer, killer });
+    state.sessions.lock().unwrap().insert(
+        id,
+        Session {
+            master: pair.master,
+            writer,
+            killer,
+        },
+    );
 
     // Waits for the shell to end, then drops the session. Closing our end of the
     // pseudo-terminal is what ends the reader below on Windows.
     let waiter = std::thread::spawn(move || {
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
-        app.state::<Terminals>().sessions.lock().unwrap().remove(&id);
+        app.state::<Terminals>()
+            .sessions
+            .lock()
+            .unwrap()
+            .remove(&id);
         code
     });
 
@@ -117,7 +134,10 @@ pub fn terminal_spawn(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    if output.send(InvokeResponseBody::Raw(buf[..n].to_vec())).is_err() {
+                    if output
+                        .send(InvokeResponseBody::Raw(buf[..n].to_vec()))
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -134,17 +154,30 @@ pub fn terminal_spawn(
 pub fn terminal_write(state: State<Terminals>, id: u32, data: String) -> Result<(), String> {
     let mut sessions = state.sessions.lock().unwrap();
     let session = sessions.get_mut(&id).ok_or("terminal has ended")?;
-    session.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    session
+        .writer
+        .write_all(data.as_bytes())
+        .map_err(|e| e.to_string())?;
     session.writer.flush().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn terminal_resize(state: State<Terminals>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+pub fn terminal_resize(
+    state: State<Terminals>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
     let sessions = state.sessions.lock().unwrap();
     let session = sessions.get(&id).ok_or("terminal has ended")?;
     session
         .master
-        .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+        .resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
         .map_err(|e| e.to_string())
 }
 

@@ -29,7 +29,9 @@ struct Entry {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum FileContent {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// Binary or too large to edit: the frontend hands it to the system's default app.
     External,
 }
@@ -38,7 +40,11 @@ enum FileContent {
 /// Hidden entries (starting with ".") are left out unless `show_hidden`, and so
 /// are folders named in `hidden_folders`.
 #[tauri::command]
-fn list_dir(path: String, show_hidden: bool, hidden_folders: Vec<String>) -> Result<Vec<Entry>, String> {
+fn list_dir(
+    path: String,
+    show_hidden: bool,
+    hidden_folders: Vec<String>,
+) -> Result<Vec<Entry>, String> {
     let mut entries: Vec<Entry> = std::fs::read_dir(&path)
         .map_err(|e| e.to_string())?
         .filter_map(|entry| entry.ok())
@@ -49,11 +55,17 @@ fn list_dir(path: String, show_hidden: bool, hidden_folders: Vec<String>) -> Res
             }
             let path = entry.path();
             // `metadata` follows symlinks, so linked folders show up as folders.
-            let is_dir = std::fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false);
+            let is_dir = std::fs::metadata(&path)
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
             if is_dir && hidden_folders.contains(&name) {
                 return None;
             }
-            Some(Entry { name, path: path.to_string_lossy().into_owned(), is_dir })
+            Some(Entry {
+                name,
+                path: path.to_string_lossy().into_owned(),
+                is_dir,
+            })
         })
         .collect();
     entries.sort_by(|a, b| {
@@ -83,7 +95,12 @@ const MAX_VISITED: usize = 200_000;
 /// names that contain it, then files that only match through their folders.
 /// Hidden files are skipped unless `show_hidden`; `.git` and the folders named in
 /// `hidden_folders` are never searched. Symlinked folders aren't followed.
-fn search_walk(root: &Path, query: &str, show_hidden: bool, hidden_folders: &[String]) -> Vec<SearchHit> {
+fn search_walk(
+    root: &Path,
+    query: &str,
+    show_hidden: bool,
+    hidden_folders: &[String],
+) -> Vec<SearchHit> {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
         return Vec::new();
@@ -93,7 +110,9 @@ fn search_walk(root: &Path, query: &str, show_hidden: bool, hidden_folders: &[St
     let mut queue = std::collections::VecDeque::from([root.to_path_buf()]);
     let mut visited = 0usize;
     'walk: while let Some(dir) = queue.pop_front() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             visited += 1;
             if visited > MAX_VISITED || matches.len() >= MAX_MATCHES {
@@ -104,17 +123,25 @@ fn search_walk(root: &Path, query: &str, show_hidden: bool, hidden_folders: &[St
                 continue;
             }
             let path = entry.path();
-            let Ok(kind) = entry.file_type() else { continue };
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             if kind.is_dir() {
                 if name != ".git" && !hidden_folders.contains(&name) {
                     queue.push_back(path);
                 }
                 continue;
             }
-            if kind.is_symlink() && !std::fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false) {
+            if kind.is_symlink()
+                && !std::fs::metadata(&path)
+                    .map(|m| m.is_file())
+                    .unwrap_or(false)
+            {
                 continue;
             }
-            let Ok(relative) = path.strip_prefix(root) else { continue };
+            let Ok(relative) = path.strip_prefix(root) else {
+                continue;
+            };
             let relative_text = relative.to_string_lossy().replace('\\', "/");
             let haystack = relative_text.to_lowercase();
             if !terms.iter().all(|t| haystack.contains(t.as_str())) {
@@ -123,13 +150,28 @@ fn search_walk(root: &Path, query: &str, show_hidden: bool, hidden_folders: &[St
             let lower_name = name.to_lowercase();
             let score: usize = terms
                 .iter()
-                .map(|t| if lower_name.starts_with(t.as_str()) { 0 } else if lower_name.contains(t.as_str()) { 1 } else { 2 })
+                .map(|t| {
+                    if lower_name.starts_with(t.as_str()) {
+                        0
+                    } else if lower_name.contains(t.as_str()) {
+                        1
+                    } else {
+                        2
+                    }
+                })
                 .sum();
             let dir = relative
                 .parent()
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            matches.push((score, SearchHit { name, path: path.to_string_lossy().into_owned(), dir }));
+            matches.push((
+                score,
+                SearchHit {
+                    name,
+                    path: path.to_string_lossy().into_owned(),
+                    dir,
+                },
+            ));
         }
     }
     matches.sort_by(|(sa, a), (sb, b)| {
@@ -172,7 +214,10 @@ fn read_file(path: String, max_size: Option<u64>) -> Result<FileContent, String>
     }
     match String::from_utf8(bytes) {
         Ok(text) => Ok(FileContent::Text {
-            text: text.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(text),
+            text: text
+                .strip_prefix('\u{feff}')
+                .map(str::to_string)
+                .unwrap_or(text),
         }),
         Err(_) => Ok(FileContent::External),
     }
@@ -181,7 +226,9 @@ fn read_file(path: String, max_size: Option<u64>) -> Result<FileContent, String>
 #[tauri::command]
 fn open_in_default_app(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -253,10 +300,22 @@ fn save_asset(request: tauri::ipc::Request) -> Result<String, String> {
         .and_then(|s| s.to_str())
         .unwrap_or("image")
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
-    let ext = original.extension().and_then(|e| e.to_str()).unwrap_or("png");
-    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let ext = original
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let name = format!("{stem}-{stamp}.{ext}");
 
     std::fs::write(assets_dir.join(&name), bytes).map_err(|e| e.to_string())?;
@@ -273,12 +332,17 @@ fn watch_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<
         if matches!(event.kind, EventKind::Access(_)) {
             return;
         }
-        let paths: Vec<String> =
-            event.paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        let paths: Vec<String> = event
+            .paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
         let _ = app.emit("fs-change", paths);
     })
     .map_err(|e| e.to_string())?;
-    watcher.watch(Path::new(&path), RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+    watcher
+        .watch(Path::new(&path), RecursiveMode::Recursive)
+        .map_err(|e| e.to_string())?;
     *slot = Some(watcher);
     Ok(())
 }
@@ -332,15 +396,21 @@ fn save_recent(app: AppHandle, recent: String) -> Result<(), String> {
 /// so two folders with the same name don't share settings.
 fn project_file(app: &AppHandle, folder: &str) -> Result<PathBuf, String> {
     // FNV-1a: stable across runs and Rust versions, unlike `DefaultHasher`.
-    let hash = folder
-        .bytes()
-        .fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    let hash = folder.bytes().fold(0xcbf29ce484222325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    });
     let name: String = Path::new(folder)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("project")
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     Ok(projects_dir(app)?.join(format!("{name}-{hash:016x}.json")))
 }
@@ -382,7 +452,11 @@ fn open_files(app: &AppHandle, files: Vec<String>) {
     if files.is_empty() {
         return;
     }
-    app.state::<AppState>().pending_opens.lock().unwrap().extend(files.iter().cloned());
+    app.state::<AppState>()
+        .pending_opens
+        .lock()
+        .unwrap()
+        .extend(files.iter().cloned());
     let _ = app.emit("open-files", ());
 }
 
@@ -405,7 +479,11 @@ pub fn run() {
         .setup(|app| {
             let cwd = std::env::current_dir().unwrap_or_default();
             let files = files_from_args(std::env::args().skip(1), &cwd);
-            app.state::<AppState>().pending_opens.lock().unwrap().extend(files);
+            app.state::<AppState>()
+                .pending_opens
+                .lock()
+                .unwrap()
+                .extend(files);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -460,7 +538,8 @@ mod tests {
 
     impl Scratch {
         fn new(name: &str, files: &[&str]) -> Self {
-            let root = std::env::temp_dir().join(format!("margin-test-{name}-{}", std::process::id()));
+            let root =
+                std::env::temp_dir().join(format!("margin-test-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
             for file in files {
                 let path = root.join(file);
@@ -478,7 +557,9 @@ mod tests {
     }
 
     fn names(hits: &[SearchHit]) -> Vec<&str> {
-        hits.iter().map(|h| h.path.rsplit(['/', '\\']).next().unwrap()).collect()
+        hits.iter()
+            .map(|h| h.path.rsplit(['/', '\\']).next().unwrap())
+            .collect()
     }
 
     const FILES: &[&str] = &[
