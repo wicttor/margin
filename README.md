@@ -98,6 +98,46 @@ To build only some formats, list them, for example:
   npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
   ```
 
+## Signing the Windows installer
+
+Unsigned installers work, but Windows shows a SmartScreen warning. The project
+is set up for [Azure Artifact Signing](https://learn.microsoft.com/azure/trusted-signing/quickstart)
+(formerly "Trusted Signing"), which individual developers in the USA and
+Canada can use for about US$10/month.
+
+### One-time setup in Azure
+
+1. Create a **pay-as-you-go** Azure subscription. Free and sponsored
+   subscriptions don't work.
+2. Create an **Artifact Signing account**. Note its **name** and **region**.
+3. Complete **identity validation** as an individual (government ID and a
+   selfie). This can take a few days.
+4. Create a **certificate profile** of type *Public Trust*. Note its name.
+5. Create an **App Registration** in Microsoft Entra ID. Give it a client
+   secret, and on the signing account give it the role
+   *Artifact Signing Certificate Profile Signer*.
+
+### On the Windows build machine
+
+1. Install the Windows 11 SDK (for `signtool`), .NET 8 and the Azure CLI.
+2. Install the signing tool: `cargo install artifact-signing-cli`
+3. Set the App Registration's credentials as environment variables:
+   `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`.
+   Don't commit these.
+4. In `src-tauri/tauri.signing.conf.json`, replace `REGION`, `ACCOUNT_NAME`
+   and `CERTIFICATE_PROFILE` with your values. For the region, use the
+   account's endpoint, for example `https://eus.codesigning.azure.net` for
+   East US.
+5. Build with signing:
+   ```sh
+   npm run tauri build -- --config src-tauri/tauri.signing.conf.json
+   ```
+   The app, the `.msi` and the setup `.exe` are all signed. To check, open
+   the installer's **Properties → Digital Signatures**.
+
+Normal `npm run tauri build` stays unsigned, so builds keep working without
+the Azure setup.
+
 ## Project layout
 
 ```

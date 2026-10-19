@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "windows": {
+      "signCommand": "artifact-signing-cli -e https://REGION.codesigning.azure.net -a ACCOUNT_NAME -c CERTIFICATE_PROFILE -d Margin %1"
+    }
+  }
+}
