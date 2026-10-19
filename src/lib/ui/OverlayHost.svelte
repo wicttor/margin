@@ -50,6 +50,7 @@
       title: "General",
       items: [
         ["Main menu", "F10"],
+        ["Preferences", "Primary+,"],
         ["Keyboard shortcuts", "Primary+?"],
       ],
     },
@@ -152,7 +153,7 @@
 <style>
   .group-title {
     margin: 18px 0 6px;
-    font-size: 11pt;
+    font-size: calc(11pt * var(--ui-scale));
   }
   .group-title:first-child {
     margin-top: 0;

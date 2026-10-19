@@ -1,7 +1,5 @@
 import { loadRecent, pathExists, saveRecent } from "./api";
-
-const MAX_PROJECTS = 10;
-const MAX_FILES = 15;
+import { prefs } from "./settings.svelte";
 
 /** Recently opened projects (folders) and files, newest first. */
 class Recent {
@@ -20,12 +18,15 @@ class Recent {
   }
 
   addProject(path: string) {
-    this.projects = [path, ...this.projects.filter((p) => p !== path)].slice(0, MAX_PROJECTS);
+    this.projects = [path, ...this.projects.filter((p) => p !== path)].slice(
+      0,
+      prefs.values.recentFolders,
+    );
     this.save();
   }
 
   addFile(path: string) {
-    this.files = [path, ...this.files.filter((p) => p !== path)].slice(0, MAX_FILES);
+    this.files = [path, ...this.files.filter((p) => p !== path)].slice(0, prefs.values.recentFiles);
     this.save();
   }
 

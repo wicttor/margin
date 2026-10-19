@@ -8,11 +8,19 @@ export interface Entry {
 
 export const MARKDOWN_EXTENSIONS = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"];
 
-export const listDir = (path: string) => invoke<Entry[]>("list_dir", { path });
+export interface ListOptions {
+  showHidden: boolean;
+  hiddenFolders: string[];
+}
+
+export const listDir = (path: string, options: ListOptions) =>
+  invoke<Entry[]>("list_dir", { path, ...options });
 /** A text file's contents, or "external" for binary or very large files. */
 export type FileContent = { kind: "text"; text: string } | { kind: "external" };
 
-export const readFile = (path: string) => invoke<FileContent>("read_file", { path });
+/** Reads a text file; files over `maxSize` bytes come back as "external". */
+export const readFile = (path: string, maxSize?: number) =>
+  invoke<FileContent>("read_file", { path, maxSize });
 export const openInDefaultApp = (path: string) => invoke<void>("open_in_default_app", { path });
 export const writeFile = (path: string, contents: string) =>
   invoke<void>("write_file", { path, contents });
@@ -29,15 +37,19 @@ export const saveProjectSettings = (folder: string, settings: string) =>
 
 /** The recently opened projects and files (JSON) from `~/.margin/recent.json`, or null. */
 export const loadRecent = () => invoke<string | null>("load_recent");
+/** The preferences (JSON) from `~/.margin/settings.json`, or null. */
+export const loadSettings = () => invoke<string | null>("load_settings");
+export const saveSettings = (settings: string) => invoke<void>("save_settings", { settings });
 export const saveRecent = (recent: string) => invoke<void>("save_recent", { recent });
 
-/** Saves image bytes into `<doc folder>/assets/` and returns the path relative to the document. */
-export async function saveAsset(docPath: string, file: File): Promise<string> {
+/** Saves image bytes into `<doc folder>/<folder>/` and returns the path relative to the document. */
+export async function saveAsset(docPath: string, file: File, folder = "assets"): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   return invoke<string>("save_asset", bytes, {
     headers: {
       "x-doc-path": encodeURIComponent(docPath),
       "x-file-name": encodeURIComponent(file.name || "image.png"),
+      "x-assets-dir": encodeURIComponent(folder),
     },
   });
 }
@@ -107,11 +119,11 @@ export function localLinkTarget(href: string, docPath: string | null): string | 
 export type TerminalMessage = ArrayBuffer | { exit: number };
 
 export const terminalSpawn = (
-  cwd: string | null,
+  options: { cwd: string | null; shell: string | null; args: string[] },
   cols: number,
   rows: number,
   output: Channel<TerminalMessage>,
-) => invoke<number>("terminal_spawn", { cwd, cols, rows, output });
+) => invoke<number>("terminal_spawn", { ...options, cols, rows, output });
 export const terminalWrite = (id: number, data: string) => invoke<void>("terminal_write", { id, data });
 export const terminalResize = (id: number, cols: number, rows: number) =>
   invoke<void>("terminal_resize", { id, cols, rows });

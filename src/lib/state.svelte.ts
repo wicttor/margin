@@ -1,5 +1,6 @@
 import { SvelteSet } from "svelte/reactivity";
 import { basename, listDir, type Entry } from "./api";
+import { prefs } from "./settings.svelte";
 
 export type Mode = "wysiwyg" | "source";
 /** Markdown opens in the WYSIWYG editor; any other text file opens in the code editor. */
@@ -36,7 +37,7 @@ export class Tab {
 
   constructor(path: string | null, text: string, kind: Kind = "markdown") {
     this.kind = kind;
-    if (kind === "code") this.mode = "source";
+    this.mode = kind === "code" ? "source" : prefs.values.markdownMode;
     this.path = path;
     this.content = text;
     this.diskText = text;
@@ -74,7 +75,7 @@ class AppState {
 
   async loadListing(dir: string) {
     try {
-      this.listings[dir] = await listDir(dir);
+      this.listings[dir] = await listDir(dir, prefs.listOptions);
     } catch {
       delete this.listings[dir];
       this.expanded.delete(dir);

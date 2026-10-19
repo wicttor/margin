@@ -8,10 +8,9 @@ use notify::{EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Files larger than this open in the system's default app instead of the editor.
+/// Files larger than this open in the system's default app instead of the editor,
+/// unless the frontend passes its own limit (a preference).
 const MAX_TEXT_SIZE: u64 = 20 * 1024 * 1024;
-/// Folders left out of the tree: they are rarely browsed and can be huge.
-const SKIPPED_FOLDERS: &[&str] = &["node_modules", "__pycache__"];
 
 #[derive(Default)]
 struct AppState {
@@ -36,21 +35,22 @@ enum FileContent {
 }
 
 /// Lists the sub-folders and files of a folder, folders first, both sorted by name.
-/// Hidden entries are left out.
+/// Hidden entries (starting with ".") are left out unless `show_hidden`, and so
+/// are folders named in `hidden_folders`.
 #[tauri::command]
-fn list_dir(path: String) -> Result<Vec<Entry>, String> {
+fn list_dir(path: String, show_hidden: bool, hidden_folders: Vec<String>) -> Result<Vec<Entry>, String> {
     let mut entries: Vec<Entry> = std::fs::read_dir(&path)
         .map_err(|e| e.to_string())?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') {
+            if name.starts_with('.') && !show_hidden {
                 return None;
             }
             let path = entry.path();
             // `metadata` follows symlinks, so linked folders show up as folders.
             let is_dir = std::fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false);
-            if is_dir && SKIPPED_FOLDERS.contains(&name.as_str()) {
+            if is_dir && hidden_folders.contains(&name) {
                 return None;
             }
             Some(Entry { name, path: path.to_string_lossy().into_owned(), is_dir })
@@ -65,12 +65,12 @@ fn list_dir(path: String) -> Result<Vec<Entry>, String> {
 }
 
 /// Reads a file as UTF-8 text. Files with NUL bytes, invalid UTF-8 or over
-/// `MAX_TEXT_SIZE` are reported as external, so they are never edited and saved
-/// back corrupted.
+/// `max_size` bytes (default `MAX_TEXT_SIZE`) are reported as external, so they
+/// are never edited and saved back corrupted.
 #[tauri::command]
-fn read_file(path: String) -> Result<FileContent, String> {
+fn read_file(path: String, max_size: Option<u64>) -> Result<FileContent, String> {
     let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
-    if size > MAX_TEXT_SIZE {
+    if size > max_size.unwrap_or(MAX_TEXT_SIZE) {
         return Ok(FileContent::External);
     }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -141,7 +141,17 @@ fn save_asset(request: tauri::ipc::Request) -> Result<String, String> {
     let file_name = header("x-file-name")?;
 
     let doc_dir = doc_path.parent().ok_or("document has no folder")?;
-    let assets_dir = doc_dir.join("assets");
+    // The folder name is a preference; it must be a plain name, not a path.
+    let folder = header("x-assets-dir").unwrap_or_else(|_| "assets".into());
+    let valid = !folder.is_empty()
+        && folder != "."
+        && folder != ".."
+        && !folder.contains(['/', '\\'])
+        && Path::new(&folder).components().count() == 1;
+    if !valid {
+        return Err(format!("\"{folder}\" is not a valid folder name"));
+    }
+    let assets_dir = doc_dir.join(&folder);
     std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
     let original = Path::new(&file_name);
@@ -157,7 +167,7 @@ fn save_asset(request: tauri::ipc::Request) -> Result<String, String> {
     let name = format!("{stem}-{stamp}.{ext}");
 
     std::fs::write(assets_dir.join(&name), bytes).map_err(|e| e.to_string())?;
-    Ok(format!("assets/{name}"))
+    Ok(format!("{folder}/{name}"))
 }
 
 /// Watches a folder recursively and emits `fs-change` with the changed paths.
@@ -197,6 +207,19 @@ fn read_if_exists(path: PathBuf) -> Result<Option<String>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// The user's preferences (JSON), from `~/.margin/settings.json`.
+#[tauri::command]
+fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
+    read_if_exists(margin_dir(&app)?.join("settings.json"))
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: String) -> Result<(), String> {
+    let dir = margin_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("settings.json"), settings).map_err(|e| e.to_string())
 }
 
 /// The recently opened projects and files (JSON), from `~/.margin/recent.json`.
@@ -306,6 +329,8 @@ pub fn run() {
             save_project_settings,
             load_recent,
             save_recent,
+            load_settings,
+            save_settings,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,

@@ -12,12 +12,14 @@
   import { languages } from "@codemirror/language-data";
   import {
     codeExtensions,
+    codeOptionExtensions,
     languageFor,
     markdownSourceExtensions,
     renderHighlighted,
   } from "./codemirror";
   import { imageUrl, saveAsset } from "./api";
   import type { Tab } from "./state.svelte";
+  import { prefs } from "./settings.svelte";
   import { overlays } from "./ui/overlays.svelte";
 
   let {
@@ -32,6 +34,13 @@
 
   let isCode = $derived(tab.kind === "code");
   const languageSlot = new Compartment();
+  const optionsSlot = new Compartment();
+  let codeOptions = $derived({
+    lineNumbers: prefs.values.lineNumbers,
+    wrapLines: prefs.values.wrapLines,
+    tabWidth: prefs.values.tabWidth,
+    highlightLine: prefs.values.highlightLine,
+  });
   /** A code file's language, loaded by file name. Also used to highlight printouts. */
   let language: LanguageSupport | null = null;
 
@@ -49,7 +58,7 @@
       return "";
     }
     try {
-      return await saveAsset(tab.path, file);
+      return await saveAsset(tab.path, file, prefs.values.imagesFolder);
     } catch (e) {
       overlays.toast(`Could not save image: ${e}`);
       return "";
@@ -82,7 +91,7 @@
     });
     editor.editor
       .config((ctx) => {
-        ctx.update(remarkStringifyOptionsCtx, (options) => ({ ...options, bullet: "-" as const }));
+        ctx.update(remarkStringifyOptionsCtx, (options) => ({ ...options, bullet: prefs.values.bullet }));
         ctx.update(inlineImageConfig.key, (config) => ({
           ...config,
           proxyDomURL: (url: string) => imageUrl(url, tab.path),
@@ -128,7 +137,9 @@
       parent: sourceHost,
       state: EditorState.create({
         doc: tab.content,
-        extensions: isCode ? codeExtensions(languageSlot, onChange) : markdownSourceExtensions(onChange),
+        extensions: isCode
+          ? codeExtensions(languageSlot, optionsSlot, codeOptions, onChange)
+          : markdownSourceExtensions(onChange),
       }),
     });
     if (active) source.focus();
@@ -177,10 +188,17 @@
   $effect(() => {
     tab.preparePrint = () => {
       if (tab.mode !== "source") printView.replaceChildren();
-      else if (isCode) renderHighlighted(printView, tab.content, language);
+      else if (isCode)
+        renderHighlighted(printView, tab.content, language, prefs.values.printLineNumbers);
       else renderHighlighted(printView, tab.content, markdown({ codeLanguages: languages }));
     };
     return () => (tab.preparePrint = null);
+  });
+
+  // Code Editor preferences apply to open editors.
+  $effect(() => {
+    const options = codeOptionExtensions(codeOptions);
+    untrack(() => source?.dispatch({ effects: optionsSlot.reconfigure(options) }));
   });
 
   onDestroy(() => {
@@ -208,7 +226,8 @@
     if (!link) return;
     event.preventDefault();
     const href = link.getAttribute("href");
-    if (href && (event.ctrlKey || event.metaKey)) onLink(href, tab);
+    const follow = event.ctrlKey || event.metaKey || prefs.values.linkClick === "click";
+    if (href && follow) onLink(href, tab);
   }
 </script>
 
@@ -245,7 +264,7 @@
   .page {
     max-width: 900px;
     margin: 0 auto;
-    padding: 36px 72px 40vh;
+    padding: var(--page-padding-y) var(--page-padding-x) 40vh;
   }
   .hidden,
   .print-view {
@@ -272,7 +291,7 @@
   }
   .source :global(.cm-editor) {
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: calc(14px * var(--doc-scale));
     background: transparent;
     color: var(--view-fg-color);
   }

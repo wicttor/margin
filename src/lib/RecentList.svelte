@@ -58,7 +58,7 @@
     align-items: center;
     gap: 12px;
     min-width: 0;
-    min-height: 54px;
+    min-height: calc(var(--list-row-height) + 4px);
     padding: 6px 12px;
     border: 0;
     background: none;

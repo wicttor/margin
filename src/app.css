@@ -71,52 +71,65 @@
   --popover-shadow: 0 1px 5px 1px rgb(0 0 0 / 9%), 0 2px 14px 3px rgb(0 0 0 / 5%);
   --dialog-shadow: 0 1px 3px 1px rgb(0 0 0 / 9%), 0 2px 14px 5px rgb(0 0 0 / 15%);
 
+  /* Text sizes (Preferences → Appearance): interface and documents scale separately. */
+  --ui-scale: 1;
+  --doc-scale: 1;
+
+  /* Spacing (Preferences → Appearance → Spacing); see the compact values below. */
+  --headerbar-height: 47px;
+  --headerbar-padding: 6px;
+  --button-size: 34px;
+  --row-height: 34px;
+  --list-row-height: 50px;
+  --menu-item-height: 32px;
+  --page-padding-y: 36px;
+  --page-padding-x: 72px;
+
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --accent-color: #81d0ff;
-    --destructive-bg-color: #c01c28;
-    --destructive-color: #ff938c;
+/* The scheme is set on <html> by settings.svelte.ts from the Theme preference. */
+:root[data-scheme="dark"] {
+  --accent-color: #81d0ff;
+  --destructive-bg-color: #c01c28;
+  --destructive-color: #ff938c;
 
-    --window-bg-color: #222226;
-    --window-fg-color: #ffffff;
-    --view-bg-color: #1d1d20;
-    --view-fg-color: #ffffff;
-    --headerbar-bg-color: #2e2e32;
-    --headerbar-fg-color: #ffffff;
-    --headerbar-backdrop-color: #222226;
-    --headerbar-shade-color: rgb(0 0 6 / 36%);
-    --sidebar-bg-color: #2e2e32;
-    --sidebar-fg-color: #ffffff;
-    --sidebar-backdrop-color: #28282c;
-    --sidebar-border-color: rgb(0 0 6 / 36%);
-    --card-bg-color: rgb(255 255 255 / 8%);
-    --card-shade-color: rgb(0 0 6 / 36%);
-    --dialog-bg-color: #36363a;
-    --code-bg-color: #28282c;
+  --window-bg-color: #222226;
+  --window-fg-color: #ffffff;
+  --view-bg-color: #1d1d20;
+  --view-fg-color: #ffffff;
+  --headerbar-bg-color: #2e2e32;
+  --headerbar-fg-color: #ffffff;
+  --headerbar-backdrop-color: #222226;
+  --headerbar-shade-color: rgb(0 0 6 / 36%);
+  --sidebar-bg-color: #2e2e32;
+  --sidebar-fg-color: #ffffff;
+  --sidebar-backdrop-color: #28282c;
+  --sidebar-border-color: rgb(0 0 6 / 36%);
+  --card-bg-color: rgb(255 255 255 / 8%);
+  --card-shade-color: rgb(0 0 6 / 36%);
+  --dialog-bg-color: #36363a;
+  --code-bg-color: #28282c;
 
-    --syntax-keyword: #dc8add;
-    --syntax-string: #8ff0a4;
-    --syntax-number: #ffbe6f;
-    --syntax-comment: rgb(255 255 255 / 45%);
-    --syntax-function: #99c1f1;
-    --syntax-type: #cdab8f;
-    --syntax-constant: #ffbe6f;
-    --syntax-property: #62a0ea;
-    --syntax-heading: #99c1f1;
-    --syntax-invalid: #f66151;
-    --popover-bg-color: #36363a;
-    --popover-fg-color: #ffffff;
-    --popover-shade-color: rgb(0 0 6 / 25%);
-    --shade-color: rgb(0 0 6 / 25%);
+  --syntax-keyword: #dc8add;
+  --syntax-string: #8ff0a4;
+  --syntax-number: #ffbe6f;
+  --syntax-comment: rgb(255 255 255 / 45%);
+  --syntax-function: #99c1f1;
+  --syntax-type: #cdab8f;
+  --syntax-constant: #ffbe6f;
+  --syntax-property: #62a0ea;
+  --syntax-heading: #99c1f1;
+  --syntax-invalid: #f66151;
+  --popover-bg-color: #36363a;
+  --popover-fg-color: #ffffff;
+  --popover-shade-color: rgb(0 0 6 / 25%);
+  --shade-color: rgb(0 0 6 / 25%);
 
-    --popover-shadow: 0 1px 5px 1px rgb(0 0 0 / 30%), 0 2px 14px 3px rgb(0 0 0 / 20%);
-    --dialog-shadow: 0 1px 3px 1px rgb(0 0 0 / 30%), 0 2px 14px 5px rgb(0 0 0 / 40%);
+  --popover-shadow: 0 1px 5px 1px rgb(0 0 0 / 30%), 0 2px 14px 3px rgb(0 0 0 / 20%);
+  --dialog-shadow: 0 1px 3px 1px rgb(0 0 0 / 30%), 0 2px 14px 5px rgb(0 0 0 / 40%);
 
-    color-scheme: dark;
-  }
+  color-scheme: dark;
 }
 
 @media (prefers-contrast: more) {
@@ -125,6 +138,48 @@
     --dim-opacity: 90%;
     --disabled-opacity: 40%;
   }
+}
+
+:root[data-density="compact"] {
+  --headerbar-height: 40px;
+  --headerbar-padding: 4px;
+  --button-size: 30px;
+  --row-height: 28px;
+  --list-row-height: 40px;
+  --menu-item-height: 28px;
+  --page-padding-y: 20px;
+  --page-padding-x: 40px;
+}
+
+/*
+ * Color vision (Preferences → Appearance). Red and green are hard to tell apart
+ * with protanopia/deuteranopia, blue and yellow with tritanopia. Following
+ * GitHub's colorblind and tritanopia themes: danger turns orange for red–green,
+ * and "green" meanings (strings, success) turn blue in both.
+ */
+:root[data-vision="red-green"] {
+  --destructive-bg-color: #bc4c00;
+  --destructive-color: #bc4c00;
+  --syntax-string: #0550ae;
+  --syntax-invalid: #bc4c00;
+  --syntax-function: #1b7c83;
+  --syntax-property: inherit;
+}
+:root[data-vision="red-green"][data-scheme="dark"] {
+  --destructive-bg-color: #bd561d;
+  --destructive-color: #f0883e;
+  --syntax-string: #79c0ff;
+  --syntax-invalid: #f0883e;
+  --syntax-function: #56d4dd;
+}
+:root[data-vision="blue-yellow"] {
+  --syntax-string: #0550ae;
+  --syntax-function: #1b7c83;
+  --syntax-property: inherit;
+}
+:root[data-vision="blue-yellow"][data-scheme="dark"] {
+  --syntax-string: #79c0ff;
+  --syntax-function: #56d4dd;
 }
 
 * {
@@ -139,7 +194,7 @@ body {
   background: var(--window-bg-color);
   color: var(--window-fg-color);
   font-family: var(--font-ui);
-  font-size: 11pt;
+  font-size: calc(11pt * var(--ui-scale));
   line-height: normal;
   font-feature-settings: "tnum" 0;
   -webkit-font-smoothing: antialiased;
@@ -163,29 +218,29 @@ button {
 /* ---------- Typography (libadwaita style classes) ---------- */
 
 .title-1 {
-  font-size: 20pt;
+  font-size: calc(20pt * var(--ui-scale));
   font-weight: 800;
 }
 .title-2 {
-  font-size: 15pt;
+  font-size: calc(15pt * var(--ui-scale));
   font-weight: 800;
 }
 .title-3 {
-  font-size: 15pt;
+  font-size: calc(15pt * var(--ui-scale));
   font-weight: 700;
 }
 .title-4 {
-  font-size: 13pt;
+  font-size: calc(13pt * var(--ui-scale));
   font-weight: 700;
 }
 .heading {
   font-weight: 700;
 }
 .caption {
-  font-size: 9pt;
+  font-size: calc(9pt * var(--ui-scale));
 }
 .caption-heading {
-  font-size: 9pt;
+  font-size: calc(9pt * var(--ui-scale));
   font-weight: 700;
 }
 .dim-label {
@@ -205,7 +260,7 @@ kbd,
     inset 0 -1px var(--border-color),
     0 0 0 1px var(--border-color);
   font-family: var(--font-ui);
-  font-size: 9pt;
+  font-size: calc(9pt * var(--ui-scale));
   text-align: center;
 }
 
@@ -216,8 +271,8 @@ kbd,
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 34px;
-  min-height: 34px;
+  min-width: var(--button-size);
+  min-height: var(--button-size);
   padding: 5px 10px;
   border: 0;
   border-radius: var(--button-radius);
@@ -288,8 +343,8 @@ kbd,
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 47px;
-  padding: 6px;
+  min-height: var(--headerbar-height);
+  padding: var(--headerbar-padding);
   background: var(--headerbar-bg-color);
   color: var(--headerbar-fg-color);
   box-shadow: 0 1px var(--headerbar-shade-color);
@@ -331,7 +386,7 @@ kbd,
   text-overflow: ellipsis;
 }
 .window-title .subtitle {
-  font-size: 9pt;
+  font-size: calc(9pt * var(--ui-scale));
   opacity: var(--dim-opacity);
 }
 
@@ -345,7 +400,7 @@ kbd,
   border-radius: 9px;
   background: rgb(0 0 0 / 80%);
   color: #ffffff;
-  font-size: 11pt;
+  font-size: calc(11pt * var(--ui-scale));
   pointer-events: none;
   animation: fade-in 100ms ease-out;
 }
@@ -377,7 +432,7 @@ kbd,
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--menu-item-height);
   padding: 0 12px;
   border: 0;
   border-radius: var(--button-radius);
@@ -467,7 +522,7 @@ kbd,
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 50px;
+  min-height: var(--list-row-height);
   padding: 8px 12px;
   border: 0;
   background: none;
@@ -495,7 +550,7 @@ kbd,
   background: color-mix(in srgb, #1e1e1e 90%, transparent);
   color: #ffffff;
   box-shadow: 0 2px 8px 2px rgb(0 0 0 / 20%);
-  font-size: 11pt;
+  font-size: calc(11pt * var(--ui-scale));
   animation: toast-in 200ms ease-out;
 }
 @keyframes toast-in {
@@ -584,7 +639,7 @@ kbd,
   --crepe-color-selected: color-mix(in srgb, var(--accent-bg-color) 25%, transparent);
   --crepe-color-inline-area: var(--code-bg-color);
 
-  --crepe-base-font-size: 11pt;
+  --crepe-base-font-size: calc(11pt * var(--doc-scale));
   --crepe-font-title: var(--font-document);
   --crepe-font-default: var(--font-document);
   --crepe-font-code: var(--font-mono);
@@ -694,7 +749,8 @@ kbd,
 }
 
 @media print {
-  :root {
+  :root,
+  :root[data-scheme] {
     --view-bg-color: #ffffff;
     --view-fg-color: #000000;
     --window-bg-color: #ffffff;
@@ -736,6 +792,26 @@ kbd,
     font-family: var(--font-mono);
     font-size: 9.5pt;
     line-height: 1.45;
+  }
+  .print-view .line {
+    display: block;
+    min-height: 1.45em;
+  }
+  .print-view.numbered {
+    counter-reset: line;
+  }
+  .print-view.numbered .line {
+    position: relative;
+    padding-left: 4em;
+  }
+  .print-view.numbered .line::before {
+    counter-increment: line;
+    content: counter(line);
+    position: absolute;
+    left: 0;
+    width: 3em;
+    text-align: right;
+    color: #888;
   }
 
   /* Editing chrome that should never reach paper. */

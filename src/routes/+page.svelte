@@ -1,6 +1,6 @@
 <script lang="ts">
   import "../app.css";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { homeDir } from "@tauri-apps/api/path";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -30,7 +30,9 @@
   import TreeNode from "$lib/TreeNode.svelte";
   import TerminalView from "$lib/TerminalView.svelte";
   import RecentDialog from "$lib/RecentDialog.svelte";
+  import PreferencesDialog from "$lib/PreferencesDialog.svelte";
   import { existingPaths, recent } from "$lib/recent.svelte";
+  import { prefs } from "$lib/settings.svelte";
   import RecentList from "$lib/RecentList.svelte";
   import { terminals } from "$lib/terminals.svelte";
   import Icon from "$lib/ui/Icon.svelte";
@@ -47,6 +49,7 @@
   let restored = false;
   let focused = $state(true);
   let showRecent = $state(false);
+  let showPreferences = $state(false);
   let home = $state<string | null>(null);
   let menu = $state<{ sections: MenuSections; anchor: DOMRect | { x: number; y: number } } | null>(
     null,
@@ -75,13 +78,18 @@
    */
   async function openProject(path: string) {
     if (path === app.folder) return;
-    for (const tab of [...app.tabs]) {
-      if (!(await confirmDiscard(tab))) return;
+    const closeDocuments = prefs.values.closeOnSwitch;
+    if (closeDocuments) {
+      for (const tab of [...app.tabs]) {
+        if (!(await confirmDiscard(tab))) return;
+      }
     }
     // Don't record the half-switched state into either project's settings.
     restored = false;
-    app.tabs.splice(0);
-    app.activeId = null;
+    if (closeDocuments) {
+      app.tabs.splice(0);
+      app.activeId = null;
+    }
     await setFolder(path);
     await restoreProject(path);
     recent.addProject(path);
@@ -125,8 +133,10 @@
       await app.loadListing(dir);
       if (app.listings[dir]) app.expanded.add(dir);
     }
-    for (const file of settings.files ?? []) {
-      if (await pathExists(file)) await openFile(file, false);
+    if (prefs.values.restoreProjectFiles) {
+      for (const file of settings.files ?? []) {
+        if (await pathExists(file)) await openFile(file, false);
+      }
     }
     const active = app.tabs.find((t) => t.path === settings.active);
     if (active) app.activeId = active.id;
@@ -143,7 +153,7 @@
       return;
     }
     try {
-      const file = await readFile(path);
+      const file = await readFile(path, maxTextSize());
       if (file.kind === "external") {
         // Images, PDFs and other binary files open in the system's default app.
         await openInDefaultApp(path);
@@ -305,6 +315,11 @@
       ],
       [
         {
+          label: "Pr_eferences",
+          accel: accelLabel("Primary+,"),
+          action: () => (showPreferences = true),
+        },
+        {
           label: "_Keyboard Shortcuts",
           accel: accelLabel("Primary+?"),
           action: () => (overlays.dialog = "shortcuts"),
@@ -355,9 +370,10 @@
     for (const p of paths) if (app.listings[p]) await app.loadListing(p);
 
     for (const tab of app.tabs) {
+      if (!prefs.values.autoReload) break;
       if (!tab.path || !paths.includes(tab.path) || tab.dirty) continue;
       try {
-        const file = await readFile(tab.path);
+        const file = await readFile(tab.path, maxTextSize());
         if (file.kind === "text" && file.text !== tab.diskText) tab.reload(file.text);
       } catch {
         // Deleted or moved: keep the tab so nothing is lost.
@@ -414,7 +430,8 @@
       app.sidebarOpen = session.sidebarOpen ?? true;
       terminals.panelHeight = session.terminalHeight ?? terminals.panelHeight;
       let restoredProject = false;
-      if (session.folder && (await pathExists(session.folder))) {
+      const reopen = prefs.values.restoreLastProject;
+      if (reopen && session.folder && (await pathExists(session.folder))) {
         await setFolder(session.folder);
         restoredProject = await restoreProject(session.folder);
         recent.addProject(session.folder);
@@ -436,6 +453,19 @@
   }
 
   $effect(saveSession);
+
+  /** Files over this size (a preference) open in the system's default app. */
+  function maxTextSize() {
+    return Math.max(1, prefs.values.externalSizeMB) * 1024 * 1024;
+  }
+
+  // Showing hidden files or changing the hidden folders reloads the tree.
+  $effect(() => {
+    void prefs.listOptions;
+    untrack(() => {
+      for (const dir of Object.keys(app.listings)) void app.loadListing(dir);
+    });
+  });
 
   // The tree highlights the active document, until another row is clicked.
   $effect(() => {
@@ -486,8 +516,9 @@
       return;
     }
     // In a terminal, keys like Ctrl+W, Ctrl+P and Ctrl+R belong to the shell.
+    // F9, F10 and Ctrl+, (Preferences) aren't used by shells, so they still work.
     const inTerminal = (e.target as Element | null)?.closest?.(".terminal-area");
-    if (inTerminal && e.key !== "F9" && e.key !== "F10") return;
+    if (inTerminal && !["F9", "F10", ","].includes(e.key)) return;
     const cmd = isMac ? e.metaKey : e.ctrlKey;
     const key = e.key.toLowerCase();
     let action: (() => unknown) | undefined;
@@ -506,6 +537,7 @@
         o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
         n: newFile,
         r: () => (showRecent = true),
+        ",": () => (showPreferences = true),
         t: newFile,
         w: () => app.active && closeTab(app.active),
         p: print,
@@ -547,7 +579,8 @@
       getCurrentWebview().onDragDropEvent(async (e) => {
         if (e.payload.type !== "drop") return;
         for (const path of e.payload.paths) {
-          if (await listDir(path).then(() => true, () => false)) await openProject(path);
+          const isFolder = await listDir(path, prefs.listOptions).then(() => true, () => false);
+          if (isFolder) await openProject(path);
           else await openFile(path);
         }
       }),
@@ -562,7 +595,8 @@
       }),
     ];
     // The history loads first, so nothing recorded while restoring overwrites it.
-    recent.load().then(restoreSession).then(openPending);
+    // Preferences and history load first: restoring depends on both.
+    Promise.all([prefs.load(), recent.load()]).then(restoreSession).then(openPending);
     return () => cleanups.forEach((c) => c.then((un) => un()));
   });
 </script>
@@ -838,7 +872,7 @@
             <TerminalView
               {session}
               visible={terminals.panelOpen && session.id === terminals.activeId}
-              cwd={app.folder}
+              cwd={prefs.values.terminalStart === "folder" ? app.folder : null}
             />
           {/each}
         </div>
@@ -849,6 +883,9 @@
 
 {#if menu}
   <Menu sections={menu.sections} anchor={menu.anchor} onclose={() => (menu = null)} />
+{/if}
+{#if showPreferences}
+  <PreferencesDialog onclose={() => (showPreferences = false)} />
 {/if}
 {#if showRecent}
   <RecentDialog
@@ -898,7 +935,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 40px;
+    min-height: calc(var(--row-height) + 6px);
     padding: 0 0 0 10px;
   }
   .section-header h2 {
@@ -912,7 +949,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 34px;
+    min-height: var(--row-height);
     margin: 1px 0;
     padding: 0 4px 0 10px;
     border-radius: 6px;
@@ -990,7 +1027,7 @@
     flex: none;
     display: flex;
     gap: 6px;
-    padding: 0 6px 6px;
+    padding: 0 6px var(--headerbar-padding);
     overflow-x: auto;
     scrollbar-width: none;
     background: var(--headerbar-bg-color);
@@ -1003,7 +1040,7 @@
     align-items: center;
     gap: 6px;
     min-width: 120px;
-    min-height: 34px;
+    min-height: var(--row-height);
     padding: 0 5px;
     border-radius: 6px;
     transition: background-color 150ms;
@@ -1094,7 +1131,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 40px;
+    min-height: calc(var(--row-height) + 6px);
     padding: 3px 6px 3px 14px;
   }
   .panel-header > :global(svg) {
@@ -1133,7 +1170,7 @@
   }
   .welcome-group h2 {
     margin: 0 0 6px;
-    font-size: 11pt;
+    font-size: calc(11pt * var(--ui-scale));
   }
   .status-page h1,
   .status-page h2 {

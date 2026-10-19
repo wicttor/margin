@@ -54,11 +54,15 @@ fn shell_command() -> CommandBuilder {
 
 /// Starts a shell and streams its output to `output`: raw bytes while it runs,
 /// then `{"exit": code}` once it has ended. Returns the terminal's id.
+/// `shell` (a preference) replaces the default shell when set.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn terminal_spawn(
     app: AppHandle,
     state: State<Terminals>,
     cwd: Option<String>,
+    shell: Option<String>,
+    args: Vec<String>,
     cols: u16,
     rows: u16,
     output: Channel<InvokeResponseBody>,
@@ -67,7 +71,14 @@ pub fn terminal_spawn(
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| e.to_string())?;
 
-    let mut cmd = shell_command();
+    let mut cmd = match shell.filter(|s| !s.trim().is_empty()) {
+        Some(program) => {
+            let mut cmd = CommandBuilder::new(program.trim());
+            cmd.args(&args);
+            cmd
+        }
+        None => shell_command(),
+    };
     let dir = cwd
         .filter(|d| std::path::Path::new(d).is_dir())
         .or_else(|| app.path().home_dir().ok().map(|p| p.to_string_lossy().into_owned()));

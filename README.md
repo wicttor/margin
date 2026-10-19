@@ -46,7 +46,13 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   with no folder open, it suggests opening one.
 - **Opening files**: double-click a `.md` file once the app is installed
   (file association), or drop files or a folder on the window.
-- **Light and dark themes**, following the system setting.
+- **Preferences** (`Ctrl+,`, in the main menu): theme (system, light, dark),
+  compact spacing, separate interface and document text sizes, document and
+  code fonts, color vision modes for red–green and blue–yellow color
+  blindness, and options for every behavior: the file tree, projects and
+  history, both editors, terminals (shell, colors including GitHub's
+  colorblind and tritanopia themes, cursor, scrollback) and printing. Changes
+  apply immediately and are saved to `~/.margin/settings.json`.
 
 ## Design
 
@@ -90,6 +96,7 @@ under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 | New terminal           | `` Ctrl+Shift+` ``                            |
 | Show / hide terminals  | `` Ctrl+` ``                                  |
 | Copy / paste in a terminal | `Ctrl+Shift+C` / `Ctrl+Shift+V` (`⌘C` / `⌘V` on macOS) |
+| Preferences            | `Ctrl+,`                                  |
 | Main menu              | `F10`                                     |
 | Print                  | `Ctrl+P`                                  |
 
@@ -198,6 +205,9 @@ src/                     Svelte frontend
   lib/codemirror.ts      code editor setup, languages, printable highlighting
   lib/TreeNode.svelte    folder tree
   lib/recent.svelte.ts   recently opened folders and files
+  lib/settings.svelte.ts preferences: defaults, saving, applying the appearance
+  lib/PreferencesDialog.svelte  the Preferences dialog
+  lib/terminalThemes.ts  terminal colors (GNOME and GitHub)
   lib/RecentDialog.svelte, lib/RecentList.svelte  Open Recent and the empty window's lists
   lib/TerminalView.svelte  one terminal (xterm.js)
   lib/terminals.svelte.ts  open terminals and the terminal area's state
