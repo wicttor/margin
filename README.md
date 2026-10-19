@@ -237,3 +237,8 @@ src-tauri/
   the diff of a hand-formatted file can be noisy the first time you save it.
 - Images pasted into a new document go into `assets/` only after the document
   has been saved once.
+
+## License
+
+[MIT](LICENSE). See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who
+built Margin.
