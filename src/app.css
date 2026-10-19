@@ -51,6 +51,18 @@
   --focus-ring-color: color-mix(in srgb, var(--accent-color) 50%, transparent);
   --code-bg-color: #f3f3f5;
 
+  /* Syntax colors, from the GNOME palette */
+  --syntax-keyword: #9141ac;
+  --syntax-string: #26a269;
+  --syntax-number: #c64600;
+  --syntax-comment: rgb(0 0 6 / 45%);
+  --syntax-function: #1c71d8;
+  --syntax-type: #986a44;
+  --syntax-constant: #c64600;
+  --syntax-property: #1a5fb4;
+  --syntax-heading: #1c71d8;
+  --syntax-invalid: #c01c28;
+
   --window-radius: 15px;
   --popover-radius: 12px;
   --button-radius: 6px;
@@ -84,6 +96,17 @@
     --card-shade-color: rgb(0 0 6 / 36%);
     --dialog-bg-color: #36363a;
     --code-bg-color: #28282c;
+
+    --syntax-keyword: #dc8add;
+    --syntax-string: #8ff0a4;
+    --syntax-number: #ffbe6f;
+    --syntax-comment: rgb(255 255 255 / 45%);
+    --syntax-function: #99c1f1;
+    --syntax-type: #cdab8f;
+    --syntax-constant: #ffbe6f;
+    --syntax-property: #62a0ea;
+    --syntax-heading: #99c1f1;
+    --syntax-invalid: #f66151;
     --popover-bg-color: #36363a;
     --popover-fg-color: #ffffff;
     --popover-shade-color: rgb(0 0 6 / 25%);
@@ -573,6 +596,65 @@ kbd,
   border-color: var(--border-color);
 }
 
+/* ---------- Syntax highlighting (CodeMirror classHighlighter tokens) ---------- */
+
+.tok-keyword,
+.tok-operatorKeyword,
+.tok-modifier {
+  color: var(--syntax-keyword);
+}
+.tok-string,
+.tok-string2,
+.tok-regexp {
+  color: var(--syntax-string);
+}
+.tok-number,
+.tok-bool,
+.tok-atom {
+  color: var(--syntax-number);
+}
+.tok-comment,
+.tok-meta {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+.tok-variableName.tok-definition,
+.tok-function {
+  color: var(--syntax-function);
+}
+.tok-typeName,
+.tok-className,
+.tok-namespace,
+.tok-tagName {
+  color: var(--syntax-type);
+}
+.tok-propertyName,
+.tok-attributeName,
+.tok-labelName {
+  color: var(--syntax-property);
+}
+.tok-heading {
+  color: var(--syntax-heading);
+  font-weight: 700;
+}
+.tok-strong {
+  font-weight: 700;
+}
+.tok-emphasis {
+  font-style: italic;
+}
+.tok-strikethrough {
+  text-decoration: line-through;
+}
+.tok-link,
+.tok-url {
+  color: var(--accent-color);
+  text-decoration: underline;
+}
+.tok-invalid {
+  color: var(--syntax-invalid);
+}
+
 /* ---------- Printing ---------- */
 
 @page {
@@ -607,6 +689,21 @@ kbd,
   .doc-view .page {
     max-width: none;
     padding: 0 !important;
+  }
+
+  /* Code files and markdown source mode print a static, fully rendered copy:
+     the live editor only draws the lines on screen. */
+  .doc-view.source-mode .page {
+    display: none !important;
+  }
+  .doc-view.source-mode .print-view {
+    display: block !important;
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 9.5pt;
+    line-height: 1.45;
   }
 
   /* Editing chrome that should never reach paper. */

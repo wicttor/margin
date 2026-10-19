@@ -6,7 +6,10 @@ use notify::{EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdown", "mkd", "mkdn", "mdx"];
+/// Files larger than this open in the system's default app instead of the editor.
+const MAX_TEXT_SIZE: u64 = 20 * 1024 * 1024;
+/// Folders left out of the tree: they are rarely browsed and can be huge.
+const SKIPPED_FOLDERS: &[&str] = &["node_modules", "__pycache__"];
 
 #[derive(Default)]
 struct AppState {
@@ -22,14 +25,16 @@ struct Entry {
     is_dir: bool,
 }
 
-fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| MARKDOWN_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-        .unwrap_or(false)
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum FileContent {
+    Text { text: String },
+    /// Binary or too large to edit: the frontend hands it to the system's default app.
+    External,
 }
 
-/// Lists the sub-folders and markdown files of a folder, folders first, both sorted by name.
+/// Lists the sub-folders and files of a folder, folders first, both sorted by name.
+/// Hidden entries are left out.
 #[tauri::command]
 fn list_dir(path: String) -> Result<Vec<Entry>, String> {
     let mut entries: Vec<Entry> = std::fs::read_dir(&path)
@@ -43,7 +48,7 @@ fn list_dir(path: String) -> Result<Vec<Entry>, String> {
             let path = entry.path();
             // `metadata` follows symlinks, so linked folders show up as folders.
             let is_dir = std::fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false);
-            if !is_dir && !is_markdown(&path) {
+            if is_dir && SKIPPED_FOLDERS.contains(&name.as_str()) {
                 return None;
             }
             Some(Entry { name, path: path.to_string_lossy().into_owned(), is_dir })
@@ -57,11 +62,31 @@ fn list_dir(path: String) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
+/// Reads a file as UTF-8 text. Files with NUL bytes, invalid UTF-8 or over
+/// `MAX_TEXT_SIZE` are reported as external, so they are never edited and saved
+/// back corrupted.
 #[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
+fn read_file(path: String) -> Result<FileContent, String> {
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > MAX_TEXT_SIZE {
+        return Ok(FileContent::External);
+    }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&bytes);
-    Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_string())
+    if bytes[..bytes.len().min(8000)].contains(&0) {
+        return Ok(FileContent::External);
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(FileContent::Text {
+            text: text.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(text),
+        }),
+        Err(_) => Ok(FileContent::External),
+    }
+}
+
+#[tauri::command]
+fn open_in_default_app(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -206,6 +231,7 @@ pub fn run() {
             list_dir,
             read_file,
             write_file,
+            open_in_default_app,
             path_exists,
             save_asset,
             watch_folder,

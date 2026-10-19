@@ -2,13 +2,15 @@ import { SvelteSet } from "svelte/reactivity";
 import { basename, listDir, type Entry } from "./api";
 
 export type Mode = "wysiwyg" | "source";
+/** Markdown opens in the WYSIWYG editor; any other text file opens in the code editor. */
+export type Kind = "markdown" | "code";
 
 let nextTabId = 1;
 
 export class Tab {
   readonly id = nextTabId++;
   path = $state<string | null>(null);
-  /** The markdown as currently edited. */
+  /** The text as currently edited. */
   content = $state("");
   /** The text last read from or written to disk. */
   diskText = $state("");
@@ -25,11 +27,16 @@ export class Tab {
    * call this before reading `content` for saving or closing, to include the latest keystrokes.
    */
   flush: (() => void) | null = null;
+  /** Set by the tab's editor: prepares the static view that is printed in source mode. */
+  preparePrint: (() => void) | null = null;
+  readonly kind: Kind;
 
   name = $derived(this.path ? basename(this.path) : "Untitled");
   dirty = $derived(this.content !== this.diskText && this.content !== this.baseline);
 
-  constructor(path: string | null, text: string) {
+  constructor(path: string | null, text: string, kind: Kind = "markdown") {
+    this.kind = kind;
+    if (kind === "code") this.mode = "source";
     this.path = path;
     this.content = text;
     this.diskText = text;

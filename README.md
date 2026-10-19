@@ -12,12 +12,17 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
 - **WYSIWYG editing**: headings, lists, task lists, tables, code blocks with
   syntax highlighting, math (KaTeX), links and images render in place.
 - **Source mode** (`Ctrl+/`, `⌘/` on macOS) for editing the raw markdown.
-- **Folder tree** of a folder's sub-folders and markdown files. It updates when
-  files change on disk.
+- **Any text file**: CSS, C++, PHP, Python, JSON and 100+ other languages
+  open in a code editor with syntax highlighting, line numbers, folding and
+  search (`Ctrl+F`). They're saved exactly as written.
+- **Binary files** (images, PDFs, archives…) and files over 20 MB open in your
+  system's default app.
+- **Folder tree** of a folder's files and sub-folders. Hidden files and
+  `node_modules` are left out. It updates when files change on disk.
 - **Tabs**: a dot marks unsaved changes. You're asked before unsaved work is
   closed. Right-click a tab for more options.
 - **Print** button (`Ctrl+P`). To make a PDF, pick "Save as PDF" in your
-  system's print dialog.
+  system's print dialog. Code prints with syntax highlighting.
 - **Images**: relative paths like `assets/pic.png` display correctly. Pasted
   images are saved into an `assets/` folder next to the document.
 - **Links**: `Ctrl`/`⌘`+click a link to open it. Links to other `.md` files
@@ -63,7 +68,7 @@ under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 | Close tab              | `Ctrl+W` (or middle-click)                |
 | Next / previous tab    | `Ctrl+Page Down` / `Ctrl+Page Up`, `Ctrl+Tab` |
 | Go to tab 1–9          | `Alt+1` … `Alt+9`                         |
-| Markdown source mode   | `Ctrl+/`                                  |
+| Markdown source mode   | `Ctrl+/` (in code files: toggle comment)  |
 | Show / hide sidebar    | `F9`                                      |
 | Main menu              | `F10`                                     |
 | Print                  | `Ctrl+P`                                  |
@@ -170,6 +175,7 @@ the Azure setup.
 src/                     Svelte frontend
   routes/+page.svelte    window layout, tabs, shortcuts, session
   lib/Editor.svelte      one editor per tab (Milkdown + CodeMirror source mode)
+  lib/codemirror.ts      code editor setup, languages, printable highlighting
   lib/TreeNode.svelte    folder tree
   lib/ui/                GNOME-style widgets: menus, dialogs, toasts, window buttons, icons
   lib/state.svelte.ts    tabs and tree state

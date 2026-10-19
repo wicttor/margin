@@ -5,10 +5,17 @@
   import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
   import { imageInlineComponent, inlineImageConfig } from "@milkdown/kit/component/image-inline";
   import { insert } from "@milkdown/kit/utils";
-  import { EditorView, keymap } from "@codemirror/view";
-  import { EditorState } from "@codemirror/state";
-  import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+  import { EditorView } from "@codemirror/view";
+  import { Compartment, EditorState } from "@codemirror/state";
+  import type { LanguageSupport } from "@codemirror/language";
   import { markdown } from "@codemirror/lang-markdown";
+  import { languages } from "@codemirror/language-data";
+  import {
+    codeExtensions,
+    languageFor,
+    markdownSourceExtensions,
+    renderHighlighted,
+  } from "./codemirror";
   import { imageUrl, saveAsset } from "./api";
   import type { Tab } from "./state.svelte";
   import { overlays } from "./ui/overlays.svelte";
@@ -19,8 +26,14 @@
     onLink,
   }: { tab: Tab; active: boolean; onLink: (href: string, tab: Tab) => void } = $props();
 
-  let crepeHost: HTMLDivElement;
+  let crepeHost = $state<HTMLDivElement>();
   let sourceHost: HTMLDivElement;
+  let printView: HTMLPreElement;
+
+  let isCode = $derived(tab.kind === "code");
+  const languageSlot = new Compartment();
+  /** A code file's language, loaded by file name. Also used to highlight printouts. */
+  let language: LanguageSupport | null = null;
 
   let crepe: Crepe | null = null;
   let builtVersion = -1;
@@ -50,6 +63,7 @@
     crepe = null;
     await old?.destroy();
     if (seq !== buildSeq) return;
+    if (!crepeHost) return;
     crepeHost.replaceChildren();
 
     const editor = new Crepe({
@@ -109,25 +123,30 @@
       }
       return;
     }
+    const onChange = (text: string) => (tab.content = text);
     source = new EditorView({
       parent: sourceHost,
       state: EditorState.create({
         doc: tab.content,
-        extensions: [
-          history(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown(),
-          EditorView.lineWrapping,
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) tab.content = update.state.doc.toString();
-          }),
-        ],
+        extensions: isCode ? codeExtensions(languageSlot, onChange) : markdownSourceExtensions(onChange),
       }),
     });
-    source.focus();
+    if (active) source.focus();
+  }
+
+  /** Loads syntax highlighting for a code file, by its name. Runs again after "Save As". */
+  async function loadLanguage(path: string | null) {
+    const support = (await languageFor(path)?.load()) ?? null;
+    if (path !== tab.path) return;
+    language = support;
+    source?.dispatch({ effects: languageSlot.reconfigure(support ?? []) });
   }
 
   function sync() {
+    if (isCode) {
+      showSource();
+      return;
+    }
     if (tab.mode === "source") {
       if (contentBeforeSource === null) {
         flushWysiwyg();
@@ -148,6 +167,20 @@
     void tab.mode;
     void tab.version;
     untrack(sync);
+  });
+
+  $effect(() => {
+    const path = tab.path;
+    if (isCode) untrack(() => loadLanguage(path));
+  });
+
+  $effect(() => {
+    tab.preparePrint = () => {
+      if (tab.mode !== "source") printView.replaceChildren();
+      else if (isCode) renderHighlighted(printView, tab.content, language);
+      else renderHighlighted(printView, tab.content, markdown({ codeLanguages: languages }));
+    };
+    return () => (tab.preparePrint = null);
   });
 
   onDestroy(() => {
@@ -180,14 +213,23 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="doc-view" class:active onclick={onClick}>
-  <div
-    class="page"
-    class:hidden={tab.mode !== "wysiwyg"}
-    bind:this={crepeHost}
-    onpastecapture={onPaste}
-  ></div>
+<div
+  class="doc-view"
+  class:active
+  class:code={isCode}
+  class:source-mode={tab.mode === "source"}
+  onclick={onClick}
+>
+  {#if !isCode}
+    <div
+      class="page"
+      class:hidden={tab.mode !== "wysiwyg"}
+      bind:this={crepeHost}
+      onpastecapture={onPaste}
+    ></div>
+  {/if}
   <div class="page source" class:hidden={tab.mode !== "source"} bind:this={sourceHost}></div>
+  <pre class="print-view" bind:this={printView}></pre>
 </div>
 
 <style>
@@ -205,8 +247,28 @@
     margin: 0 auto;
     padding: 36px 72px 40vh;
   }
-  .hidden {
+  .hidden,
+  .print-view {
     display: none;
+  }
+  .code .page {
+    max-width: none;
+    padding: 0;
+  }
+  .code .source :global(.cm-editor) {
+    min-height: 100%;
+  }
+  .code .source :global(.cm-gutters) {
+    border: 0;
+    background: var(--view-bg-color);
+    color: color-mix(in srgb, var(--view-fg-color) 45%, transparent);
+  }
+  .code .source :global(.cm-activeLine),
+  .code .source :global(.cm-activeLineGutter) {
+    background: color-mix(in srgb, var(--view-fg-color) 4%, transparent);
+  }
+  .code .source :global(.cm-content) {
+    padding: 8px 0 40vh;
   }
   .source :global(.cm-editor) {
     font-family: var(--font-mono);

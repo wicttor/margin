@@ -14,6 +14,7 @@
     listDir,
     localLinkTarget,
     MARKDOWN_EXTENSIONS,
+    openInDefaultApp,
     pathExists,
     printPage,
     readFile,
@@ -66,7 +67,13 @@
       return;
     }
     try {
-      const tab = new Tab(path, await readFile(path));
+      const file = await readFile(path);
+      if (file.kind === "external") {
+        // Images, PDFs and other binary files open in the system's default app.
+        await openInDefaultApp(path);
+        return;
+      }
+      const tab = new Tab(path, file.text, isMarkdown(path) ? "markdown" : "code");
       app.tabs.push(tab);
       app.activeId = tab.id;
     } catch {
@@ -75,7 +82,7 @@
   }
 
   async function chooseFiles() {
-    const picked = await open({ multiple: true, filters: markdownFilter });
+    const picked = await open({ multiple: true });
     for (const path of picked ?? []) await openFile(path);
   }
 
@@ -89,12 +96,14 @@
     tab.flush?.();
     let path = tab.path;
     if (!path || saveAs) {
+      const markdownTab = tab.kind === "markdown";
+      const fallbackName = markdownTab ? `${tab.name}.md` : tab.name;
       const picked = await save({
-        filters: markdownFilter,
-        defaultPath: path ?? (app.folder ? `${app.folder}/${tab.name}.md` : `${tab.name}.md`),
+        filters: markdownTab ? markdownFilter : undefined,
+        defaultPath: path ?? (app.folder ? `${app.folder}/${fallbackName}` : fallbackName),
       });
       if (!picked) return false;
-      path = isMarkdown(picked) ? picked : `${picked}.md`;
+      path = !markdownTab || isMarkdown(picked) ? picked : `${picked}.md`;
     }
     try {
       await writeFile(path, tab.content);
@@ -152,7 +161,13 @@
 
   function toggleSource() {
     const tab = app.active;
-    if (tab) tab.mode = tab.mode === "source" ? "wysiwyg" : "source";
+    if (tab?.kind === "markdown") tab.mode = tab.mode === "source" ? "wysiwyg" : "source";
+  }
+
+  function print() {
+    if (!app.active) return;
+    app.active.preparePrint?.();
+    printPage();
   }
 
   async function followLink(href: string, tab: Tab) {
@@ -161,8 +176,7 @@
       if (!href.startsWith("#")) await openUrl(href).catch(() => {});
       return;
     }
-    if (isMarkdown(target)) await openFile(target);
-    else await openUrl(href.startsWith("file:") ? href : `file://${target}`).catch(() => {});
+    await openFile(target);
   }
 
   // ---------- menus ----------
@@ -185,7 +199,7 @@
           label: "_Print…",
           accel: accelLabel("Primary+P"),
           disabled: !app.active,
-          action: printPage,
+          action: print,
         },
       ],
       [
@@ -193,7 +207,7 @@
           label: "Markdown _Source",
           accel: accelLabel("Primary+/"),
           checked: app.active?.mode === "source",
-          disabled: !app.active,
+          disabled: app.active?.kind !== "markdown",
           action: toggleSource,
         },
         {
@@ -257,8 +271,8 @@
     for (const tab of app.tabs) {
       if (!tab.path || !paths.includes(tab.path) || tab.dirty) continue;
       try {
-        const text = await readFile(tab.path);
-        if (text !== tab.diskText) tab.reload(text);
+        const file = await readFile(tab.path);
+        if (file.kind === "text" && file.text !== tab.diskText) tab.reload(file.text);
       } catch {
         // Deleted or moved: keep the tab so nothing is lost.
       }
@@ -335,14 +349,15 @@
       const tab = app.tabs[Number(e.key) - 1];
       if (tab) action = () => (app.activeId = tab.id);
     } else if (cmd && !e.altKey) {
-      const actions: Record<string, () => unknown> = {
+      const actions: Record<string, (() => unknown) | undefined> = {
         s: () => app.active && saveTab(app.active, e.shiftKey),
         o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
         n: newFile,
         t: newFile,
         w: () => app.active && closeTab(app.active),
-        p: () => app.active && printPage(),
-        "/": toggleSource,
+        p: print,
+        // In code files, Ctrl+/ is left to the editor, which toggles a comment.
+        "/": app.active?.kind === "markdown" ? toggleSource : undefined,
         "?": () => (overlays.dialog = "shortcuts"),
       };
       action = actions[e.shiftKey && key === "/" ? "?" : key];
@@ -362,8 +377,8 @@
       getCurrentWebview().onDragDropEvent(async (e) => {
         if (e.payload.type !== "drop") return;
         for (const path of e.payload.paths) {
-          if (isMarkdown(path)) await openFile(path);
-          else if (await listDir(path).then(() => true, () => false)) await setFolder(path);
+          if (await listDir(path).then(() => true, () => false)) await setFolder(path);
+          else await openFile(path);
         }
       }),
       getCurrentWindow().onCloseRequested(async (e) => {
@@ -423,8 +438,8 @@
             <TreeNode {entry} depth={0} onOpen={openFile} />
           {:else}
             <div class="status-page compact">
-              <h2 class="title-4">No Documents</h2>
-              <p class="description dim-label">This folder has no markdown files.</p>
+              <h2 class="title-4">Empty Folder</h2>
+              <p class="description dim-label">This folder has no files.</p>
             </div>
           {/each}
         {:else}
@@ -474,7 +489,7 @@
           class="btn image flat"
           use:tooltip={"Print"}
           disabled={!app.active}
-          onclick={() => printPage()}
+          onclick={print}
         >
           <Icon name="printer" />
         </button>
@@ -526,7 +541,7 @@
           <Icon name="text-x-generic" class="icon" size={128} />
           <h1 class="title-1">No Open Documents</h1>
           <p class="description dim-label">
-            Open a markdown file or start a new one. You can also drop files or a folder here.
+            Open a file or start a new markdown document. You can also drop files or a folder here.
           </p>
           <div class="actions">
             <button class="btn pill" onclick={newFile}>New Document</button>

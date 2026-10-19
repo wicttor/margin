@@ -9,7 +9,11 @@ export interface Entry {
 export const MARKDOWN_EXTENSIONS = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"];
 
 export const listDir = (path: string) => invoke<Entry[]>("list_dir", { path });
-export const readFile = (path: string) => invoke<string>("read_file", { path });
+/** A text file's contents, or "external" for binary or very large files. */
+export type FileContent = { kind: "text"; text: string } | { kind: "external" };
+
+export const readFile = (path: string) => invoke<FileContent>("read_file", { path });
+export const openInDefaultApp = (path: string) => invoke<void>("open_in_default_app", { path });
 export const writeFile = (path: string, contents: string) =>
   invoke<void>("write_file", { path, contents });
 export const pathExists = (path: string) => invoke<boolean>("path_exists", { path });

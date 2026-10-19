@@ -44,7 +44,7 @@
     <Self entry={child} depth={depth + 1} {onOpen} />
   {/each}
   {#if children.length === 0}
-    <div class="empty dim-label" style:padding-inline-start="{6 + (depth + 1) * 18 + 22}px">No markdown files</div>
+    <div class="empty dim-label" style:padding-inline-start="{6 + (depth + 1) * 18 + 22}px">Empty</div>
   {/if}
 {/if}
 
