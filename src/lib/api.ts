@@ -21,6 +21,12 @@ export const watchFolder = (path: string) => invoke<void>("watch_folder", { path
 export const printPage = () => invoke<void>("print_page");
 export const takePendingOpens = () => invoke<string[]>("take_pending_opens");
 
+/** A project's settings (JSON) from `~/.margin/projects/`, or null if it has none yet. */
+export const loadProjectSettings = (folder: string) =>
+  invoke<string | null>("load_project_settings", { folder });
+export const saveProjectSettings = (folder: string, settings: string) =>
+  invoke<void>("save_project_settings", { folder, settings });
+
 /** Saves image bytes into `<doc folder>/assets/` and returns the path relative to the document. */
 export async function saveAsset(docPath: string, file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());

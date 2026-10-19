@@ -12,12 +12,14 @@
     dirname,
     isMarkdown,
     listDir,
+    loadProjectSettings,
     localLinkTarget,
     MARKDOWN_EXTENSIONS,
     openInDefaultApp,
     pathExists,
     printPage,
     readFile,
+    saveProjectSettings,
     takePendingOpens,
     watchFolder,
     writeFile,
@@ -57,7 +59,58 @@
 
   async function chooseFolder() {
     const path = await open({ directory: true, defaultPath: app.folder ?? undefined });
-    if (typeof path === "string") await setFolder(path);
+    if (typeof path === "string") await openProject(path);
+  }
+
+  /**
+   * Opens a folder as the current project. The previous project's documents are
+   * closed (asking about unsaved changes); the new one reopens the files it had
+   * open last time, or starts with none.
+   */
+  async function openProject(path: string) {
+    if (path === app.folder) return;
+    for (const tab of [...app.tabs]) {
+      if (!(await confirmDiscard(tab))) return;
+    }
+    // Don't record the half-switched state into either project's settings.
+    restored = false;
+    app.tabs.splice(0);
+    app.activeId = null;
+    await setFolder(path);
+    await restoreProject(path);
+    restored = true;
+    saveSession();
+  }
+
+  interface ProjectSettings {
+    folder: string;
+    files: string[];
+    active: string | null;
+    /** Folders expanded in the tree. */
+    expanded: string[];
+  }
+
+  /** Reopens a project's remembered files and tree folders. Returns false if it has none saved. */
+  async function restoreProject(folder: string): Promise<boolean> {
+    let settings: ProjectSettings | null = null;
+    try {
+      const json = await loadProjectSettings(folder);
+      settings = json ? JSON.parse(json) : null;
+    } catch {
+      // Unreadable settings: start the project fresh.
+    }
+    if (!settings) return false;
+    // Parents first, so each folder's listing loads under an expanded parent.
+    for (const dir of [...(settings.expanded ?? [])].sort((a, b) => a.length - b.length)) {
+      await app.loadListing(dir);
+      if (app.listings[dir]) app.expanded.add(dir);
+    }
+    for (const file of settings.files ?? []) {
+      if (await pathExists(file)) await openFile(file);
+    }
+    const active = app.tabs.find((t) => t.path === settings.active);
+    if (active) app.activeId = active.id;
+    return true;
   }
 
   // ---------- tabs ----------
@@ -284,18 +337,40 @@
 
   // ---------- session ----------
 
+  /**
+   * Remembers the window layout and last folder in the webview's storage. A
+   * project's open files go into its own settings file in ~/.margin/projects/;
+   * files opened without a folder are kept with the session instead.
+   */
   function saveSession() {
-    if (!restored) return;
+    // Read the state before checking `restored`: as an $effect, this only re-runs
+    // when state it read changes, so returning early on the first run would stop
+    // it from ever saving.
+    const files = app.tabs.map((t) => t.path).filter((p): p is string => p !== null);
+    const active = app.active?.path ?? null;
+    const expanded = [...app.expanded];
     const session = {
       folder: app.folder,
-      files: app.tabs.map((t) => t.path).filter(Boolean),
-      active: app.active?.path ?? null,
+      files: app.folder ? [] : files,
+      active: app.folder ? null : active,
       sidebarOpen: app.sidebarOpen,
       terminalHeight: terminals.panelHeight,
     };
+    if (!restored) return;
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     } catch {}
+    if (app.folder) {
+      const settings: ProjectSettings = {
+        folder: app.folder,
+        files,
+        active,
+        expanded,
+      };
+      saveProjectSettings(app.folder, JSON.stringify(settings, null, 2)).catch((e) =>
+        console.warn("Cannot save project settings:", e),
+      );
+    }
   }
 
   async function restoreSession() {
@@ -306,12 +381,19 @@
     if (session) {
       app.sidebarOpen = session.sidebarOpen ?? true;
       terminals.panelHeight = session.terminalHeight ?? terminals.panelHeight;
-      if (session.folder && (await pathExists(session.folder))) await setFolder(session.folder);
-      for (const path of session.files ?? []) {
-        if (await pathExists(path)) await openFile(path);
+      let restoredProject = false;
+      if (session.folder && (await pathExists(session.folder))) {
+        await setFolder(session.folder);
+        restoredProject = await restoreProject(session.folder);
       }
-      const active = app.tabs.find((t) => t.path === session.active);
-      if (active) app.activeId = active.id;
+      // Files opened without a folder, and sessions saved before projects had settings files.
+      if (!restoredProject) {
+        for (const path of session.files ?? []) {
+          if (await pathExists(path)) await openFile(path);
+        }
+        const active = app.tabs.find((t) => t.path === session.active);
+        if (active) app.activeId = active.id;
+      }
     }
     restored = true;
   }
@@ -410,7 +492,7 @@
       getCurrentWebview().onDragDropEvent(async (e) => {
         if (e.payload.type !== "drop") return;
         for (const path of e.payload.paths) {
-          if (await listDir(path).then(() => true, () => false)) await setFolder(path);
+          if (await listDir(path).then(() => true, () => false)) await openProject(path);
           else await openFile(path);
         }
       }),

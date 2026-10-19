@@ -34,7 +34,11 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   switch. Hiding the terminal area (`` Ctrl+` ``) keeps the shells running, and
   typing `exit` closes a terminal. The shell is your default one (PowerShell on
   Windows when installed) and starts in the open folder.
-- **Reopens your last session**: the folder and the tabs you had open.
+- **Projects**: opening a folder (sidebar button, main menu, or dropping it on
+  the window) closes the previous folder's documents, asking first about
+  unsaved changes. Each project remembers its open files, the active tab and
+  the expanded tree folders in `~/.margin/projects/`, and gets them back the
+  next time you open it, including when the app starts.
 - **Opening files**: double-click a `.md` file once the app is installed
   (file association), or drop files or a folder on the window.
 - **Light and dark themes**, following the system setting.

@@ -180,6 +180,45 @@ fn watch_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<
     Ok(())
 }
 
+/// Where per-project settings live: `~/.margin/projects/`.
+fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    Ok(home.join(".margin").join("projects"))
+}
+
+/// A project's settings file: the folder's name plus a hash of its full path,
+/// so two folders with the same name don't share settings.
+fn project_file(app: &AppHandle, folder: &str) -> Result<PathBuf, String> {
+    // FNV-1a: stable across runs and Rust versions, unlike `DefaultHasher`.
+    let hash = folder
+        .bytes()
+        .fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    let name: String = Path::new(folder)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("project")
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    Ok(projects_dir(app)?.join(format!("{name}-{hash:016x}.json")))
+}
+
+/// Reads a project's saved settings (JSON), or nothing if it has none yet.
+#[tauri::command]
+fn load_project_settings(app: AppHandle, folder: String) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(project_file(&app, &folder)?) {
+        Ok(json) => Ok(Some(json)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_project_settings(app: AppHandle, folder: String, settings: String) -> Result<(), String> {
+    std::fs::create_dir_all(projects_dir(&app)?).map_err(|e| e.to_string())?;
+    std::fs::write(project_file(&app, &folder)?, settings).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn print_page(webview: tauri::Webview) -> Result<(), String> {
     webview.print().map_err(|e| e.to_string())
@@ -241,6 +280,8 @@ pub fn run() {
             watch_folder,
             print_page,
             take_pending_opens,
+            load_project_settings,
+            save_project_settings,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,
