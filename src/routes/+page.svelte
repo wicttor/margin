@@ -10,6 +10,7 @@
   import {
     basename,
     dirname,
+    isInside,
     isMarkdown,
     listDir,
     loadProjectSettings,
@@ -28,6 +29,9 @@
   import Editor from "$lib/Editor.svelte";
   import TreeNode from "$lib/TreeNode.svelte";
   import TerminalView from "$lib/TerminalView.svelte";
+  import RecentDialog from "$lib/RecentDialog.svelte";
+  import { existingPaths, recent } from "$lib/recent.svelte";
+  import RecentList from "$lib/RecentList.svelte";
   import { terminals } from "$lib/terminals.svelte";
   import Icon from "$lib/ui/Icon.svelte";
   import Menu, { type MenuSections } from "$lib/ui/Menu.svelte";
@@ -42,6 +46,7 @@
 
   let restored = false;
   let focused = $state(true);
+  let showRecent = $state(false);
   let home = $state<string | null>(null);
   let menu = $state<{ sections: MenuSections; anchor: DOMRect | { x: number; y: number } } | null>(
     null,
@@ -53,6 +58,7 @@
     app.folder = path;
     app.listings = {};
     app.expanded.clear();
+    app.projectRecent = [];
     await app.loadListing(path);
     watchFolder(path).catch((e) => console.warn("Cannot watch folder:", e));
   }
@@ -78,6 +84,7 @@
     app.activeId = null;
     await setFolder(path);
     await restoreProject(path);
+    recent.addProject(path);
     restored = true;
     saveSession();
   }
@@ -88,6 +95,18 @@
     active: string | null;
     /** Folders expanded in the tree. */
     expanded: string[];
+    /** Files recently opened in this project, newest first. */
+    recent?: string[];
+  }
+
+  const MAX_PROJECT_RECENT = 10;
+
+  function rememberInProject(path: string) {
+    if (!app.folder || !isInside(path, app.folder)) return;
+    app.projectRecent = [path, ...app.projectRecent.filter((p) => p !== path)].slice(
+      0,
+      MAX_PROJECT_RECENT,
+    );
   }
 
   /** Reopens a project's remembered files and tree folders. Returns false if it has none saved. */
@@ -100,13 +119,14 @@
       // Unreadable settings: start the project fresh.
     }
     if (!settings) return false;
+    app.projectRecent = Array.isArray(settings.recent) ? settings.recent : [];
     // Parents first, so each folder's listing loads under an expanded parent.
     for (const dir of [...(settings.expanded ?? [])].sort((a, b) => a.length - b.length)) {
       await app.loadListing(dir);
       if (app.listings[dir]) app.expanded.add(dir);
     }
     for (const file of settings.files ?? []) {
-      if (await pathExists(file)) await openFile(file);
+      if (await pathExists(file)) await openFile(file, false);
     }
     const active = app.tabs.find((t) => t.path === settings.active);
     if (active) app.activeId = active.id;
@@ -115,7 +135,8 @@
 
   // ---------- tabs ----------
 
-  async function openFile(path: string) {
+  /** Opens a file in a tab. `remember` adds it to Open Recent; files reopened from a saved session aren't. */
+  async function openFile(path: string, remember = true) {
     const existing = app.tabs.find((t) => t.path === path);
     if (existing) {
       app.activeId = existing.id;
@@ -131,6 +152,10 @@
       const tab = new Tab(path, file.text, isMarkdown(path) ? "markdown" : "code");
       app.tabs.push(tab);
       app.activeId = tab.id;
+      if (remember) {
+        recent.addFile(path);
+        rememberInProject(path);
+      }
     } catch {
       overlays.toast(`Could not open “${basename(path)}”`);
     }
@@ -165,6 +190,10 @@
     } catch {
       overlays.toast(`Could not save “${basename(path)}”`);
       return false;
+    }
+    if (tab.path !== path) {
+      recent.addFile(path);
+      rememberInProject(path);
     }
     tab.path = path;
     tab.markSaved();
@@ -242,6 +271,7 @@
         { label: "_New Document", accel: accelLabel("Primary+N"), action: newFile },
         { label: "_Open File…", accel: accelLabel("Primary+O"), action: chooseFiles },
         { label: "Open _Folder…", accel: accelLabel("Primary+Shift+O"), action: chooseFolder },
+        { label: "Open _Recent…", accel: accelLabel("Primary+R"), action: () => (showRecent = true) },
         { label: "New _Terminal", accel: "Ctrl+Shift+`", action: () => terminals.create() },
       ],
       [
@@ -349,6 +379,7 @@
     const files = app.tabs.map((t) => t.path).filter((p): p is string => p !== null);
     const active = app.active?.path ?? null;
     const expanded = [...app.expanded];
+    const projectRecent = [...app.projectRecent];
     const session = {
       folder: app.folder,
       files: app.folder ? [] : files,
@@ -366,6 +397,7 @@
         files,
         active,
         expanded,
+        recent: projectRecent,
       };
       saveProjectSettings(app.folder, JSON.stringify(settings, null, 2)).catch((e) =>
         console.warn("Cannot save project settings:", e),
@@ -385,11 +417,12 @@
       if (session.folder && (await pathExists(session.folder))) {
         await setFolder(session.folder);
         restoredProject = await restoreProject(session.folder);
+        recent.addProject(session.folder);
       }
       // Files opened without a folder, and sessions saved before projects had settings files.
       if (!restoredProject) {
         for (const path of session.files ?? []) {
-          if (await pathExists(path)) await openFile(path);
+          if (await pathExists(path)) await openFile(path, false);
         }
         const active = app.tabs.find((t) => t.path === session.active);
         if (active) app.activeId = active.id;
@@ -408,6 +441,21 @@
     const tab = app.active;
     const title = tab ? `${tab.dirty ? "• " : ""}${tab.name} — Margin` : "Margin";
     getCurrentWindow().setTitle(title).catch(() => {});
+  });
+
+  // ---------- empty window: recent folders and this project's recent files ----------
+
+  let welcomeFolders = $state<string[]>([]);
+  let welcomeFiles = $state<string[]>([]);
+
+  $effect(() => {
+    if (app.tabs.length > 0) return;
+    const folders = recent.projects.filter((p) => p !== app.folder).slice(0, 5);
+    const files = app.folder ? app.projectRecent.slice(0, 8) : [];
+    let current = true;
+    existingPaths(folders).then((found) => current && (welcomeFolders = found));
+    existingPaths(files).then((found) => current && (welcomeFiles = found));
+    return () => (current = false);
   });
 
   /** The folder shown under the window title, with the home folder shortened to "~". */
@@ -451,6 +499,7 @@
         s: () => app.active && saveTab(app.active, e.shiftKey),
         o: () => (e.shiftKey ? chooseFolder() : chooseFiles()),
         n: newFile,
+        r: () => (showRecent = true),
         t: newFile,
         w: () => app.active && closeTab(app.active),
         p: print,
@@ -506,7 +555,8 @@
         await getCurrentWindow().destroy();
       }),
     ];
-    restoreSession().then(openPending);
+    // The history loads first, so nothing recorded while restoring overwrites it.
+    recent.load().then(restoreSession).then(openPending);
     return () => cleanups.forEach((c) => c.then((un) => un()));
   });
 </script>
@@ -687,16 +737,58 @@
         <Editor {tab} active={tab.id === app.activeId} onLink={followLink} />
       {/each}
       {#if app.tabs.length === 0}
-        <div class="status-page">
-          <Icon name="text-x-generic" class="icon" size={128} />
-          <h1 class="title-1">No Open Documents</h1>
-          <p class="description dim-label">
-            Open a file or start a new markdown document. You can also drop files or a folder here.
-          </p>
-          <div class="actions">
-            <button class="btn pill" onclick={newFile}>New Document</button>
-            <button class="btn pill suggested-action" onclick={chooseFiles}>Open File…</button>
-          </div>
+        <div class="welcome">
+          {#if app.folder}
+            <div class="status-page">
+              <Icon name="text-x-generic" class="icon" size={128} />
+              <h1 class="title-1">No Open Documents</h1>
+              <p class="description dim-label">
+                Pick a file in the sidebar or below, open one from elsewhere, or start a new
+                markdown document.
+              </p>
+              <div class="actions">
+                <button class="btn pill" onclick={newFile}>New Document</button>
+                <button class="btn pill suggested-action" onclick={chooseFiles}>Open File…</button>
+              </div>
+            </div>
+          {:else}
+            <div class="status-page">
+              <Icon name="folder" class="icon" size={128} />
+              <h1 class="title-1">Open a Folder</h1>
+              <p class="description dim-label">
+                Open a folder to browse and edit its files. You can also open a single file, start
+                a new document, or drop files or a folder here.
+              </p>
+              <div class="actions">
+                <button class="btn pill" onclick={chooseFiles}>Open File…</button>
+                <button class="btn pill suggested-action" onclick={chooseFolder}>Open Folder…</button>
+              </div>
+            </div>
+          {/if}
+          {#if welcomeFiles.length > 0}
+            <section class="welcome-group">
+              <h2 class="heading">Recent Files</h2>
+              <RecentList
+                paths={welcomeFiles}
+                kind="file"
+                {home}
+                onOpen={(p) => openFile(p)}
+                onRemove={(p) => (app.projectRecent = app.projectRecent.filter((q) => q !== p))}
+              />
+            </section>
+          {/if}
+          {#if welcomeFolders.length > 0}
+            <section class="welcome-group">
+              <h2 class="heading">Recent Folders</h2>
+              <RecentList
+                paths={welcomeFolders}
+                kind="folder"
+                {home}
+                onOpen={openProject}
+                onRemove={(p) => recent.remove(p)}
+              />
+            </section>
+          {/if}
         </div>
       {/if}
     </div>
@@ -751,6 +843,15 @@
 
 {#if menu}
   <Menu sections={menu.sections} anchor={menu.anchor} onclose={() => (menu = null)} />
+{/if}
+{#if showRecent}
+  <RecentDialog
+    currentFolder={app.folder}
+    {home}
+    onOpenProject={openProject}
+    onOpenFile={openFile}
+    onclose={() => (showRecent = false)}
+  />
 {/if}
 <OverlayHost />
 
@@ -1009,6 +1110,25 @@
   .status-page :global(.icon) {
     stroke-width: 0.6;
   }
+  .welcome {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: 0 24px 48px;
+  }
+  .welcome .status-page {
+    height: auto;
+    min-height: 60%;
+    padding-top: 72px;
+  }
+  .welcome-group {
+    max-width: 480px;
+    margin: 24px auto 0;
+  }
+  .welcome-group h2 {
+    margin: 0 0 6px;
+    font-size: 11pt;
+  }
   .status-page h1,
   .status-page h2 {
     margin: 0;
@@ -1019,6 +1139,7 @@
     .headerbar,
     .tabbar,
     .terminal-area,
+    .welcome,
     .status-page {
       display: none !important;
     }

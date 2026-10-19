@@ -180,10 +180,36 @@ fn watch_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<
     Ok(())
 }
 
+/// The app's own folder in the user's home: `~/.margin/`.
+fn margin_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    Ok(home.join(".margin"))
+}
+
 /// Where per-project settings live: `~/.margin/projects/`.
 fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let home = app.path().home_dir().map_err(|e| e.to_string())?;
-    Ok(home.join(".margin").join("projects"))
+    Ok(margin_dir(app)?.join("projects"))
+}
+
+fn read_if_exists(path: PathBuf) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// The recently opened projects and files (JSON), from `~/.margin/recent.json`.
+#[tauri::command]
+fn load_recent(app: AppHandle) -> Result<Option<String>, String> {
+    read_if_exists(margin_dir(&app)?.join("recent.json"))
+}
+
+#[tauri::command]
+fn save_recent(app: AppHandle, recent: String) -> Result<(), String> {
+    let dir = margin_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("recent.json"), recent).map_err(|e| e.to_string())
 }
 
 /// A project's settings file: the folder's name plus a hash of its full path,
@@ -206,11 +232,7 @@ fn project_file(app: &AppHandle, folder: &str) -> Result<PathBuf, String> {
 /// Reads a project's saved settings (JSON), or nothing if it has none yet.
 #[tauri::command]
 fn load_project_settings(app: AppHandle, folder: String) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(project_file(&app, &folder)?) {
-        Ok(json) => Ok(Some(json)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
+    read_if_exists(project_file(&app, &folder)?)
 }
 
 #[tauri::command]
@@ -282,6 +304,8 @@ pub fn run() {
             take_pending_opens,
             load_project_settings,
             save_project_settings,
+            load_recent,
+            save_recent,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,

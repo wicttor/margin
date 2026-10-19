@@ -14,6 +14,7 @@
         ["New document", "Primary+N"],
         ["Open file", "Primary+O"],
         ["Open folder", "Primary+Shift+O"],
+        ["Open recent", "Primary+R"],
         ["Save", "Primary+S"],
         ["Save as", "Primary+Shift+S"],
         ["Print", "Primary+P"],
@@ -155,26 +156,6 @@
   }
   .group-title:first-child {
     margin-top: 0;
-  }
-  .boxed-list {
-    overflow: hidden;
-    border-radius: 12px;
-    background: var(--card-bg-color);
-    box-shadow:
-      0 0 0 1px var(--card-shade-color),
-      0 1px 3px 1px var(--card-shade-color);
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 50px;
-    padding: 8px 12px;
-    text-align: start;
-  }
-  .row + .row {
-    border-top: 1px solid var(--card-shade-color);
   }
   .keys {
     display: flex;

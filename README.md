@@ -39,6 +39,10 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Svelte, using
   unsaved changes. Each project remembers its open files, the active tab and
   the expanded tree folders in `~/.margin/projects/`, and gets them back the
   next time you open it, including when the app starts.
+- **Open Recent** (`Ctrl+R`, also in the main menu) lists recently opened
+  folders and files, kept in `~/.margin/recent.json`. When no document is
+  open, the window shows the project's recent files and your recent folders;
+  with no folder open, it suggests opening one.
 - **Opening files**: double-click a `.md` file once the app is installed
   (file association), or drop files or a folder on the window.
 - **Light and dark themes**, following the system setting.
@@ -75,6 +79,7 @@ under **Main Menu → Keyboard Shortcuts** (`Ctrl+?`).
 | ---------------------- | ----------------------------------------- |
 | New document / new tab | `Ctrl+N` / `Ctrl+T`                       |
 | Open file / folder     | `Ctrl+O` / `Ctrl+Shift+O`                 |
+| Open recent            | `Ctrl+R`                                  |
 | Save / Save as         | `Ctrl+S` / `Ctrl+Shift+S`                 |
 | Close tab              | `Ctrl+W` (or middle-click)                |
 | Next / previous tab    | `Ctrl+Page Down` / `Ctrl+Page Up`, `Ctrl+Tab` |
@@ -191,6 +196,8 @@ src/                     Svelte frontend
   lib/Editor.svelte      one editor per tab (Milkdown + CodeMirror source mode)
   lib/codemirror.ts      code editor setup, languages, printable highlighting
   lib/TreeNode.svelte    folder tree
+  lib/recent.svelte.ts   recently opened folders and files
+  lib/RecentDialog.svelte, lib/RecentList.svelte  Open Recent and the empty window's lists
   lib/TerminalView.svelte  one terminal (xterm.js)
   lib/terminals.svelte.ts  open terminals and the terminal area's state
   lib/ui/                GNOME-style widgets: menus, dialogs, toasts, window buttons, icons

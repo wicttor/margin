@@ -27,6 +27,10 @@ export const loadProjectSettings = (folder: string) =>
 export const saveProjectSettings = (folder: string, settings: string) =>
   invoke<void>("save_project_settings", { folder, settings });
 
+/** The recently opened projects and files (JSON) from `~/.margin/recent.json`, or null. */
+export const loadRecent = () => invoke<string | null>("load_recent");
+export const saveRecent = (recent: string) => invoke<void>("save_recent", { recent });
+
 /** Saves image bytes into `<doc folder>/assets/` and returns the path relative to the document. */
 export async function saveAsset(docPath: string, file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -50,6 +54,12 @@ export function basename(path: string): string {
 export function dirname(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i <= 0 ? path.slice(0, i + 1) : path.slice(0, i);
+}
+
+/** Whether a path is inside a folder (at any depth). */
+export function isInside(path: string, folder: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/$/, "");
+  return norm(path).startsWith(norm(folder) + "/");
 }
 
 /** Resolves a relative markdown URL (`./img/a.png`, `../notes.md`) against a folder. */

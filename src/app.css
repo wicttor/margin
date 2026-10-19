@@ -451,6 +451,38 @@ kbd,
   }
 }
 
+/* ---------- Boxed lists (rows in a rounded card) ---------- */
+
+.boxed-list {
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--card-bg-color);
+  box-shadow:
+    0 0 0 1px var(--card-shade-color),
+    0 1px 3px 1px var(--card-shade-color);
+}
+.boxed-list > .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  text-align: start;
+}
+.boxed-list > .row + .row {
+  border-top: 1px solid var(--card-shade-color);
+}
+.boxed-list > .row.activatable:hover {
+  background: var(--hover-color);
+}
+.boxed-list > .row.activatable:active {
+  background: var(--active-color);
+}
+
 /* ---------- Toasts ---------- */
 
 .toast {

@@ -61,6 +61,8 @@ class AppState {
   /** Folder path → its listing, for every folder the tree has loaded. */
   listings = $state<Record<string, Entry[]>>({});
   expanded = new SvelteSet<string>();
+  /** Files recently opened in the current project, newest first. */
+  projectRecent = $state<string[]>([]);
 
   tabs = $state<Tab[]>([]);
   activeId = $state<number | null>(null);
